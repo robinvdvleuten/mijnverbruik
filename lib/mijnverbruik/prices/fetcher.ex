@@ -1,6 +1,7 @@
 defmodule Mijnverbruik.Prices.Fetcher do
   @moduledoc """
-  Keeps market prices complete while any tariff is dynamic: every hour it
+  Keeps market prices complete while any tariff has a dynamic electricity or
+  gas contract: every hour it
   fetches the days since the first dynamic tariff (at most a year back) that
   lack prices, up to tomorrow, newest first and at most 31 days per run.
   """
@@ -35,7 +36,7 @@ defmodule Mijnverbruik.Prices.Fetcher do
     tz
     |> dates_to_fetch(Tariffs.list_tariffs())
     |> Enum.each(fn date ->
-      case Prices.fetch(date, tz) do
+      case Prices.fetch(date) do
         {:ok, _count} ->
           :ok
 
@@ -51,7 +52,9 @@ defmodule Mijnverbruik.Prices.Fetcher do
   Local dates to fetch prices for, newest first, given all `tariffs`.
   """
   def dates_to_fetch(tz, tariffs) do
-    case for(%{contract: :dynamic, valid_from: from} <- tariffs, do: from) do
+    dynamic = Enum.filter(tariffs, &(&1.contract == :dynamic or &1.gas_contract == :dynamic))
+
+    case Enum.map(dynamic, & &1.valid_from) do
       [] ->
         []
 

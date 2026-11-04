@@ -165,7 +165,7 @@ defmodule Mijnverbruik.Readings do
 
   `:cost` is the hour's energy cost plus its share of the fixed costs, using
   the tariff valid on `date`. It is nil when no tariff applies, the hour has
-  not started, or a dynamic tariff lacks the hour's market price; the current
+  not started, or a dynamic tariff lacks the hour's market prices; the current
   hour gets the fixed costs elapsed so far.
   """
   def hours(%Date{} = date, tz \\ timezone()) do
@@ -217,7 +217,8 @@ defmodule Mijnverbruik.Readings do
     start = start - rem(start, 3600)
     now = System.os_time(:second)
     tariffs = Tariffs.list_tariffs()
-    prices = Prices.between(start, stop)
+    electricity = Prices.between(start, stop, :electricity)
+    gas = Prices.between(start, stop, :gas)
 
     by_hour =
       start
@@ -228,7 +229,8 @@ defmodule Mijnverbruik.Readings do
     for hour <- start..(stop - 3600)//3600 do
       date = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> DateTime.to_date()
       usage = Map.get_lazy(by_hour, hour, fn -> [] |> total() |> Map.put(:hour, hour) end)
-      cost = hour_cost(Tariffs.valid_on(tariffs, date), usage, prices[hour], now - hour)
+      market = %{electricity: electricity[hour], gas: gas[hour]}
+      cost = hour_cost(Tariffs.valid_on(tariffs, date), usage, market, now - hour)
       Map.merge(usage, %{date: date, cost: cost})
     end
   end
@@ -236,7 +238,7 @@ defmodule Mijnverbruik.Readings do
   defp hour_cost(nil, _usage, _market, _elapsed), do: nil
   defp hour_cost(_tariff, _usage, _market, elapsed) when elapsed < 0, do: nil
 
-  # A dynamic tariff without the hour's market price has no energy cost yet;
+  # A dynamic tariff without the hour's market prices has no energy cost yet;
   # leave the whole hour out rather than show fixed costs only.
   defp hour_cost(tariff, usage, market, elapsed) do
     case Tariffs.energy_cost(tariff, usage, market) do

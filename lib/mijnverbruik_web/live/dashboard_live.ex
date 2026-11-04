@@ -65,7 +65,8 @@ defmodule MijnverbruikWeb.DashboardLive do
       gas_flow_l: Readings.gas_flow(),
       hours: hours,
       insights: Insights.summary(tz),
-      prices: prices(tz, now)
+      prices: prices(tz, now),
+      gas_price: gas_price(tz, now)
     )
   end
 
@@ -165,6 +166,9 @@ defmodule MijnverbruikWeb.DashboardLive do
         <div class="flex items-baseline justify-between rounded-xl border border-base-300 p-3">
           <p class="text-xs text-base-content/60">
             Gas <span class="text-base-content/40">· meter updates every 5 minutes</span>
+          </p>
+          <p :if={@gas_price} id="gas-price" class="text-xs tabular-nums text-base-content/60">
+            {euro(@gas_price)}/m³ now
           </p>
           <p id="gas-flow" class="text-lg font-medium tabular-nums">
             <%= if @gas_flow_l do %>
@@ -305,6 +309,19 @@ defmodule MijnverbruikWeb.DashboardLive do
         cheapest:
           Enum.min_by(Enum.filter(bars, &(&1.hour + 3600 > now)), & &1.price, fn -> nil end)
       }
+    else
+      _ -> nil
+    end
+  end
+
+  # The current all-in gas price when today's tariff has a dynamic gas contract.
+  defp gas_price(tz, now) do
+    today = tz |> DateTime.now!() |> DateTime.to_date()
+    hour = now - rem(now, 3600)
+
+    with %{gas_contract: :dynamic} = tariff <- Tariffs.valid_on(Tariffs.list_tariffs(), today),
+         %{^hour => market} <- Prices.between(hour, hour + 3600, :gas) do
+      Tariffs.m3_price(tariff, market)
     else
       _ -> nil
     end

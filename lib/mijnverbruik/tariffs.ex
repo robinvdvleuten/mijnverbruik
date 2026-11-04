@@ -32,37 +32,54 @@ defmodule Mijnverbruik.Tariffs do
   `:delivered_t2_wh` (normal tariff), `:returned_wh` and `:gas_l`. Return
   lowers the cost.
 
-  A dynamic contract needs the hour's `market` price (euros per kWh excluding
-  VAT); without it the cost is nil.
+  Dynamic contracts need the hour's market prices excluding VAT in `market`,
+  as `%{electricity: euros_per_kwh, gas: euros_per_m3}`; when a needed price
+  is missing the cost is nil.
   """
-  def energy_cost(tariff, usage, market \\ nil)
-
-  def energy_cost(%Tariff{contract: :dynamic}, _usage, nil), do: nil
-
-  def energy_cost(%Tariff{contract: :dynamic} = t, usage, market) do
-    usage.delivered_wh / 1000 * kwh_price(t, market) -
-      usage.returned_wh / 1000 * return_price(t, market) +
-      usage.gas_l / 1000 * price(t.gas)
+  def energy_cost(%Tariff{} = t, usage, market \\ %{}) do
+    with electricity when is_number(electricity) <-
+           electricity_cost(t, usage, market[:electricity]),
+         gas when is_number(gas) <- gas_cost(t, usage, market[:gas]) do
+      electricity + gas
+    end
   end
 
-  def energy_cost(%Tariff{} = t, usage, _market) do
+  defp electricity_cost(%Tariff{contract: :dynamic}, _usage, nil), do: nil
+
+  defp electricity_cost(%Tariff{contract: :dynamic} = t, usage, market) do
+    usage.delivered_wh / 1000 * kwh_price(t, market) -
+      usage.returned_wh / 1000 * (with_vat(market) + price(t.electricity_return))
+  end
+
+  defp electricity_cost(%Tariff{} = t, usage, _market) do
     usage.delivered_t1_wh / 1000 * price(t.electricity_low) +
       usage.delivered_t2_wh / 1000 * price(t.electricity_normal) -
-      usage.returned_wh / 1000 * price(t.electricity_return) +
-      usage.gas_l / 1000 * price(t.gas)
+      usage.returned_wh / 1000 * price(t.electricity_return)
   end
+
+  # Without gas use, a missing gas price does not matter.
+  defp gas_cost(_tariff, %{gas_l: 0}, _market), do: 0
+  defp gas_cost(%Tariff{gas_contract: :dynamic}, _usage, nil), do: nil
+  defp gas_cost(%Tariff{} = t, usage, market), do: usage.gas_l / 1000 * m3_price(t, market)
+
+  @doc """
+  What a m³ of gas costs, including taxes. For a dynamic gas contract this
+  needs the gas day's `market` price (excluding VAT).
+  """
+  def m3_price(%Tariff{gas_contract: :dynamic} = t, market), do: with_vat(market) + price(t.gas)
+  def m3_price(%Tariff{} = t, _market), do: price(t.gas)
+
+  defp with_vat(market), do: market * (1 + Prices.vat())
 
   @doc """
   What a kWh taken from the grid costs, including taxes. For a dynamic
   contract this needs the `market` price (excluding VAT).
   """
   def kwh_price(%Tariff{contract: :dynamic} = t, market),
-    do: market * (1 + Prices.vat()) + price(t.electricity_surcharge)
+    do: with_vat(market) + price(t.electricity_surcharge)
 
   def kwh_price(%Tariff{} = t, _market),
     do: (price(t.electricity_low) + price(t.electricity_normal)) / 2
-
-  defp return_price(t, market), do: market * (1 + Prices.vat()) + price(t.electricity_return)
 
   @doc "Fixed costs in euros for one day."
   def fixed_per_day(%Tariff{} = t), do: price(t.fixed_per_month) * 12 / 365

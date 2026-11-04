@@ -85,7 +85,7 @@ defmodule MijnverbruikWeb.SettingsLive do
     |> edit(new_tariff(tariffs))
   end
 
-  defp dynamic?(form), do: to_string(form[:contract].value) == "dynamic"
+  defp dynamic?(form, field), do: to_string(form[field].value) == "dynamic"
 
   defp tariff_summary(%Tariff{contract: :dynamic} = t) do
     "Dynamic · market + €#{price(t.electricity_surcharge)} per kWh · return market + €#{price(t.electricity_return)} · " <>
@@ -97,9 +97,14 @@ defmodule MijnverbruikWeb.SettingsLive do
       common_summary(t)
   end
 
-  defp common_summary(t),
-    do:
-      "Gas €#{price(t.gas)} per m³ · Fixed #{euro(Decimal.to_float(t.fixed_per_month))} per month"
+  defp common_summary(t) do
+    gas =
+      if t.gas_contract == :dynamic,
+        do: "Gas market + €#{price(t.gas)} per m³",
+        else: "Gas €#{price(t.gas)} per m³"
+
+    gas <> " · Fixed #{euro(Decimal.to_float(t.fixed_per_month))} per month"
+  end
 
   @impl true
   def render(assigns) do
@@ -206,7 +211,7 @@ defmodule MijnverbruikWeb.SettingsLive do
             options={[{"Fixed prices", "fixed"}, {"Dynamic (hourly market prices)", "dynamic"}]}
           />
           <div class="grid gap-x-4 sm:grid-cols-2">
-            <%= if dynamic?(@form) do %>
+            <%= if dynamic?(@form, :contract) do %>
               <.input
                 field={@form[:electricity_surcharge]}
                 type="number"
@@ -242,7 +247,30 @@ defmodule MijnverbruikWeb.SettingsLive do
                 label="Return compensation (€/kWh)"
               />
             <% end %>
-            <.input field={@form[:gas]} type="number" step="0.00001" label="Gas (€/m³)" />
+          </div>
+          <div class="grid gap-x-4 sm:grid-cols-2">
+            <.input
+              field={@form[:gas_contract]}
+              type="select"
+              label="Gas contract"
+              options={[{"Fixed price", "fixed"}, {"Dynamic (daily market price)", "dynamic"}]}
+            />
+            <.input
+              field={@form[:gas]}
+              type="number"
+              step="0.00001"
+              label={
+                if dynamic?(@form, :gas_contract),
+                  do: "Gas, on top of market price (€/m³)",
+                  else: "Gas (€/m³)"
+              }
+            />
+            <p
+              :if={dynamic?(@form, :gas_contract)}
+              class="-mt-1 mb-3 text-xs text-base-content/60 sm:col-span-2"
+            >
+              Gas costs use EnergyZero's market price for each gas day (06:00 to 06:00) plus 21% VAT plus this amount: energy tax and your supplier's markup, both including VAT.
+            </p>
           </div>
           <.input
             field={@form[:fixed_per_month]}

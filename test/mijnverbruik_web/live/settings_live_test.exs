@@ -63,4 +63,18 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
 
     assert [%{contract: :dynamic, electricity_low: nil}] = Tariffs.list_tariffs()
   end
+
+  test "adds a tariff with a dynamic gas contract", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert view |> form("#tariff-form", tariff: %{"gas_contract" => "dynamic"}) |> render_change() =~
+             "Gas, on top of market price"
+
+    view
+    |> form("#tariff-form", tariff: Map.put(@params, "gas_contract", "dynamic"))
+    |> render_submit()
+
+    assert [%{gas_contract: :dynamic, contract: :fixed} = tariff] = Tariffs.list_tariffs()
+    assert view |> element("#tariffs-#{tariff.id}") |> render() =~ "Gas market + €1.45"
+  end
 end

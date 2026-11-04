@@ -57,19 +57,26 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
         contract: "dynamic",
         electricity_surcharge: "0.15",
         electricity_return: "0.15",
-        gas: "1.40",
+        gas_contract: "dynamic",
+        gas: "0.70",
         fixed_per_month: "0"
       })
 
     {:ok, view, _html} = live(conn, ~p"/")
     refute has_element?(view, "#prices")
+    refute has_element?(view, "#gas-price")
 
     now = System.os_time(:second)
     hour = now - rem(now, 3600)
-    Mijnverbruik.Repo.insert_all(Mijnverbruik.Prices.MarketPrice, [%{hour: hour, price: 0.10}])
+
+    Mijnverbruik.Repo.insert_all(Mijnverbruik.Prices.MarketPrice, [
+      %{hour: hour, commodity: :electricity, price: 0.10},
+      %{hour: hour, commodity: :gas, price: 1.0}
+    ])
 
     {:ok, view, _html} = live(conn, ~p"/")
     assert has_element?(view, "#prices")
     assert view |> element("#price-now") |> render() =~ "€0.27"
+    assert view |> element("#gas-price") |> render() =~ "€1.91/m³"
   end
 end

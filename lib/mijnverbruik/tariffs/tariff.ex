@@ -10,6 +10,9 @@ defmodule Mijnverbruik.Tariffs.Tariff do
   `:dynamic` contract pays the hourly market price plus VAT plus
   `electricity_surcharge` (energy tax and supplier markup), and returned
   electricity earns the market price plus VAT plus `electricity_return`.
+
+  `gas_contract` works the same way: `:fixed` charges `gas` per m³, while
+  `:dynamic` charges the gas day's market price plus VAT plus `gas`.
   """
   use Ecto.Schema
 
@@ -22,6 +25,7 @@ defmodule Mijnverbruik.Tariffs.Tariff do
     field :electricity_normal, :decimal
     field :electricity_surcharge, :decimal
     field :electricity_return, :decimal
+    field :gas_contract, Ecto.Enum, values: [:fixed, :dynamic], default: :fixed
     field :gas, :decimal
     field :fixed_per_month, :decimal
   end
@@ -33,6 +37,7 @@ defmodule Mijnverbruik.Tariffs.Tariff do
     :electricity_normal,
     :electricity_surcharge,
     :electricity_return,
+    :gas_contract,
     :gas,
     :fixed_per_month
   ]
@@ -40,10 +45,26 @@ defmodule Mijnverbruik.Tariffs.Tariff do
   def changeset(tariff, attrs) do
     tariff
     |> cast(attrs, @fields)
-    |> validate_required([:valid_from, :contract, :electricity_return, :gas, :fixed_per_month])
-    |> validate_number(:gas, greater_than_or_equal_to: 0)
+    |> validate_required([
+      :valid_from,
+      :contract,
+      :electricity_return,
+      :gas_contract,
+      :gas,
+      :fixed_per_month
+    ])
+    |> validate_gas()
     |> validate_contract()
     |> unique_constraint(:valid_from, message: "another tariff starts on this date")
+  end
+
+  # A dynamic gas price may sit below the market price, so only a fixed gas
+  # price must be positive.
+  defp validate_gas(changeset) do
+    case get_field(changeset, :gas_contract) do
+      :dynamic -> changeset
+      _fixed -> validate_number(changeset, :gas, greater_than_or_equal_to: 0)
+    end
   end
 
   defp validate_contract(changeset) do
