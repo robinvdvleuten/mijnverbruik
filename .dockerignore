@@ -51,6 +51,7 @@ erl_crash.dump
 *.db-*
 .env
 
-# Commit linting only
+# Repository tooling, not needed in the image
 /.vale/
 /.githooks/
+/.github/

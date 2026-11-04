@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        id: mise
+      - run: mix do local.hex --force, local.rebar --force
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache-elixir
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ steps.mise.outputs.elixir }}-${{ steps.mise.outputs.erlang }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ steps.mise.outputs.elixir }}-${{ steps.mise.outputs.erlang }}-
+      - run: mix do deps.get --check-locked, deps.compile
+        if: steps.cache-elixir.outputs.cache-hit != 'true'
+      - run: mix format --check-formatted
+      - run: mix deps.unlock --check-unused
+      - run: mix compile --warnings-as-errors
+      - run: mix test
+
+  # Pushes on main publish ghcr.io/robinvdvleuten/mijnverbruik as :latest
+  # (what compose.yaml on the NAS pulls) and as the commit SHA.
+  build-and-push:
+    runs-on: ubuntu-24.04
+    needs: [test]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/robinvdvleuten/mijnverbruik:latest
+            ghcr.io/robinvdvleuten/mijnverbruik:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/robinvdvleuten/mijnverbruik
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
