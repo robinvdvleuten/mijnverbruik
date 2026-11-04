@@ -48,6 +48,7 @@ defmodule Mijnverbruik.Application do
       host ->
         [
           Mijnverbruik.Meter.Recorder,
+          Mijnverbruik.Meter.Trend,
           {Mijnverbruik.Meter.Reader, host: host, port: meter[:port]}
         ]
     end

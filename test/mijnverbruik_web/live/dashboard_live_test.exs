@@ -16,6 +16,7 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
     send(view.pid, {:telegram, telegram})
 
     assert view |> element("#power") |> render() =~ "2027"
+    assert has_element?(view, "#trend path")
     refute has_element?(view, "#meter-status")
   end
 

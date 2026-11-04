@@ -4,6 +4,7 @@ defmodule MijnverbruikWeb.DashboardLive do
   import MijnverbruikWeb.{Charts, Format}
 
   alias Mijnverbruik.{Meter, Readings}
+  alias Mijnverbruik.Meter.Trend
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,24 +14,36 @@ defmodule MijnverbruikWeb.DashboardLive do
       :timer.send_interval(1000, :tick)
     end
 
+    %{latest: latest, samples: samples} = Trend.snapshot()
+    {live, live_at} = latest || {nil, nil}
+
     {:ok,
      socket
-     |> assign(live: nil, live_at: nil, offline?: false, now: now(), page_title: "Verbruik")
+     |> assign(live: live, live_at: live_at, samples: samples, offline?: false, now: now())
+     |> assign(page_title: "Verbruik")
+     |> assign_status()
      |> assign_usage()}
   end
 
   @impl true
   def handle_info({:telegram, telegram}, socket) do
     now = now()
+    live = Meter.live(telegram)
+    samples = Trend.prune(socket.assigns.samples ++ [{now, live.power_w}], now)
 
     {:noreply,
-     assign(socket, live: Meter.live(telegram), live_at: now, now: now, offline?: false)}
+     socket
+     |> assign(live: live, live_at: now, now: now, offline?: false, samples: samples)
+     |> assign_status()}
   end
 
-  def handle_info(:meter_offline, socket), do: {:noreply, assign(socket, offline?: true)}
+  def handle_info(:meter_offline, socket),
+    do: {:noreply, socket |> assign(offline?: true) |> assign_status()}
 
   def handle_info(:tick, socket), do: handle_info({:tick, now()}, socket)
-  def handle_info({:tick, now}, socket), do: {:noreply, assign(socket, now: now)}
+
+  def handle_info({:tick, now}, socket),
+    do: {:noreply, socket |> assign(now: now) |> assign_status()}
 
   def handle_info({:recorded, _minute}, socket), do: {:noreply, assign_usage(socket)}
 
@@ -68,21 +81,22 @@ defmodule MijnverbruikWeb.DashboardLive do
         <h2 id="now" class="text-sm font-medium text-base-content/60">Now</h2>
         <%= if @live do %>
           <p
-            :if={status = live_status(@offline?, @live_at, @now)}
+            :if={@status}
             id="meter-status"
             role="status"
             class="flex items-center gap-2 text-sm text-warning"
           >
             <.icon name="hero-signal-slash" class="size-4" />
-            {status}
+            {@status}
           </p>
           <div class={[
             "space-y-4 transition-opacity",
-            live_status(@offline?, @live_at, @now) && "opacity-40"
+            @status && "opacity-40"
           ]}>
             <p id="power" class="text-6xl font-semibold tabular-nums tracking-tight">
               {@live.power_w}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
             </p>
+            <.trend id="trend" samples={@samples} now={@now} window={Trend.window()} />
             <ul class="grid grid-cols-3 gap-3">
               <li
                 :for={{phase, i} <- Enum.with_index(@live.phases, 1)}
@@ -160,14 +174,19 @@ defmodule MijnverbruikWeb.DashboardLive do
   # screen no longer describe now.
   @stale_after 10
 
-  defp live_status(offline?, live_at, now) do
+  defp assign_status(%{assigns: %{live_at: nil}} = socket), do: assign(socket, status: nil)
+
+  defp assign_status(%{assigns: %{offline?: offline?, live_at: live_at, now: now}} = socket) do
     age = now - live_at
 
-    cond do
-      offline? -> "Meter offline · last update #{ago(age)}"
-      age > @stale_after -> "No data from the meter · last update #{ago(age)}"
-      true -> nil
-    end
+    status =
+      cond do
+        offline? -> "Meter offline · last update #{ago(age)}"
+        age > @stale_after -> "No data from the meter · last update #{ago(age)}"
+        true -> nil
+      end
+
+    assign(socket, status: status)
   end
 
   defp ago(seconds) when seconds < 60, do: "#{max(seconds, 0)} s ago"

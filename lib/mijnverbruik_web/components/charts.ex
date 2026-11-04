@@ -89,6 +89,92 @@ defmodule MijnverbruikWeb.Charts do
     """
   end
 
+  attr :id, :string, required: true
+  attr :samples, :list, required: true, doc: "`{unix_seconds, watts}` tuples, oldest first"
+  attr :now, :integer, required: true
+  attr :window, :integer, required: true, doc: "seconds shown, ending at `now`"
+
+  @doc """
+  Line chart of net power over the last `window` seconds. Return (negative
+  power) falls below the zero line. Gaps over 5 seconds break the line.
+  """
+  def trend(assigns) do
+    watts = Enum.map(assigns.samples, &elem(&1, 1))
+    top = max(Enum.max(watts, fn -> 0 end), 100)
+    bottom = min(Enum.min(watts, fn -> 0 end), 0)
+    y = fn w -> (top - w) / (top - bottom) * @height end
+    x = fn t -> (t - (assigns.now - assigns.window)) / assigns.window * 100 end
+
+    paths =
+      assigns.samples
+      |> Enum.chunk_while(
+        [],
+        fn
+          {t, _} = s, [{prev, _} | _] = acc when t - prev > 5 -> {:cont, Enum.reverse(acc), [s]}
+          s, acc -> {:cont, [s | acc]}
+        end,
+        fn
+          [] -> {:cont, []}
+          acc -> {:cont, Enum.reverse(acc), []}
+        end
+      )
+      |> Enum.map(fn segment ->
+        points = Enum.map(segment, fn {t, w} -> "#{fmt(x.(t))},#{fmt(y.(w))}" end)
+        {first_t, _} = hd(segment)
+        {last_t, _} = List.last(segment)
+        zero = fmt(y.(0))
+
+        %{
+          line: "M" <> Enum.join(points, "L"),
+          area:
+            "M#{fmt(x.(first_t))},#{zero}L" <>
+              Enum.join(points, "L") <> "L#{fmt(x.(last_t))},#{zero}Z"
+        }
+      end)
+
+    assigns = assign(assigns, paths: paths, zero: y.(0), height: @height, top: top)
+
+    ~H"""
+    <figure class="space-y-1">
+      <svg
+        id={@id}
+        viewBox={"0 0 100 #{@height}"}
+        preserveAspectRatio="none"
+        class="h-24 w-full overflow-visible"
+        role="img"
+        aria-label={"Power over the last #{div(@window, 60)} minutes"}
+      >
+        <line
+          x1="0"
+          x2="100"
+          y1={@zero}
+          y2={@zero}
+          class="stroke-base-content/20"
+          stroke-width="1"
+          vector-effect="non-scaling-stroke"
+        />
+        <g :for={path <- @paths}>
+          <path d={path.area} class="fill-primary/15" />
+          <path
+            d={path.line}
+            class="fill-none stroke-primary"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+            vector-effect="non-scaling-stroke"
+          />
+        </g>
+      </svg>
+      <figcaption class="flex justify-between text-xs text-base-content/60">
+        <span>{div(@window, 60)} min ago</span>
+        <span class="tabular-nums">peak {@top} W</span>
+        <span>now</span>
+      </figcaption>
+    </figure>
+    """
+  end
+
+  defp fmt(n), do: :erlang.float_to_binary(n / 1, decimals: 2)
+
   defp bar_title(%{down: down} = bar, unit) when down > 0,
     do: "#{bar.label}: #{value(bar.up, unit)} used, #{value(down, unit)} returned"
 
