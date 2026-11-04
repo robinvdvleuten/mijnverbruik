@@ -37,7 +37,12 @@ defmodule MijnverbruikWeb.DashboardLive do
         %{label: Calendar.strftime(d.date, "%a %d %b"), value: d.delivered_wh}
       end
 
-    assign(socket, today: Readings.today(tz), hours: hours, days: days)
+    assign(socket,
+      today: Readings.today(tz),
+      gas_flow_l: Readings.gas_flow(),
+      hours: hours,
+      days: days
+    )
   end
 
   @impl true
@@ -63,6 +68,18 @@ defmodule MijnverbruikWeb.DashboardLive do
         <% else %>
           <p id="power" class="text-base-content/60">Waiting for the meter…</p>
         <% end %>
+        <div class="flex items-baseline justify-between rounded-xl border border-base-300 p-3">
+          <p class="text-xs text-base-content/60">
+            Gas <span class="text-base-content/40">· meter updates every 5 minutes</span>
+          </p>
+          <p id="gas-flow" class="text-lg font-medium tabular-nums">
+            <%= if @gas_flow_l do %>
+              {m3(@gas_flow_l)} m³/h
+            <% else %>
+              <span class="text-base-content/60" title="Waiting for two gas meter updates">—</span>
+            <% end %>
+          </p>
+        </div>
       </section>
 
       <section aria-labelledby="today" class="mt-10 space-y-3">

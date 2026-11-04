@@ -83,6 +83,47 @@ defmodule Mijnverbruik.ReadingsTest do
     end
   end
 
+  describe "gas_flow/1" do
+    defp gas_rows(start, values, opts \\ []) do
+      values
+      |> Enum.with_index()
+      |> Enum.each(fn {gas, i} -> insert(start + i * 60, 0, Keyword.put(opts, :gas_l, gas)) end)
+    end
+
+    test "uses the interval between the last two changes of the total" do
+      # Total changes at minute 2 (+40 l) and minute 7 (+62 l).
+      gas_rows(@hour, [1000, 1000, 1040, 1040, 1040, 1040, 1040, 1102, 1102])
+
+      assert Readings.gas_flow(@hour + 8 * 60) == div(62 * 3600, 300)
+    end
+
+    test "is zero when the total has not changed for 10 minutes" do
+      gas_rows(@hour, List.duplicate(1000, 11))
+      assert Readings.gas_flow(@hour + 10 * 60) == 0
+
+      Repo.delete_all(Reading)
+      gas_rows(@hour, [1000, 1010, 1010, 1010, 1010, 1010, 1020] ++ List.duplicate(1020, 10))
+      assert Readings.gas_flow(@hour + 16 * 60) == 0
+    end
+
+    test "is nil until two changes are seen, or when readings are stale" do
+      assert Readings.gas_flow(@hour) == nil
+
+      gas_rows(@hour, [1000, 1000, 1010, 1010])
+      assert Readings.gas_flow(@hour + 3 * 60) == nil
+
+      gas_rows(@hour + 4 * 60, [1010, 1010, 1010, 1020])
+      assert Readings.gas_flow(@hour + 7 * 60 + 3600) == nil
+    end
+
+    test "ignores readings of a replaced meter" do
+      gas_rows(@hour, [9000, 9100], equipment_id: "OLD")
+      gas_rows(@hour + 120, [10, 20, 20, 20, 20, 20, 30])
+
+      assert Readings.gas_flow(@hour + 120 + 6 * 60) == div(10 * 3600, 300)
+    end
+  end
+
   describe "daily/2 and today/1" do
     test "sums usage from local midnight" do
       tz = "Europe/Amsterdam"

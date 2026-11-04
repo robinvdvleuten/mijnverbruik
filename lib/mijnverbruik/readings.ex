@@ -75,6 +75,51 @@ defmodule Mijnverbruik.Readings do
     Repo.insert(reading, on_conflict: :nothing, conflict_target: :minute)
   end
 
+  # Gas meters report a new total every 5 minutes (DSMR 5). Ten minutes
+  # without a change means no gas is being used.
+  @gas_idle 600
+  @gas_lookback 1200
+
+  @doc """
+  Gas flow in litres per hour over the meter's latest update interval.
+
+  Meters do not report instantaneous gas flow, only a total that changes every
+  5 minutes. The flow is the difference between the last two changes of that
+  total divided by the time between them, or 0 when the total has not changed
+  for 10 minutes. Returns `nil` when recent readings are missing or do not yet
+  contain two changes.
+  """
+  def gas_flow(now \\ System.os_time(:second)) do
+    import Ecto.Query
+
+    rows =
+      Repo.all(
+        from r in Reading,
+          where: not is_nil(r.gas_l) and r.minute >= ^(now - @gas_lookback),
+          order_by: [asc: r.minute],
+          select: {r.minute, r.gas_l, r.equipment_id}
+      )
+
+    with {latest_minute, _gas, equipment_id} <- List.last(rows),
+         true <- now - latest_minute <= @gas_idle do
+      changes =
+        rows
+        |> Enum.filter(&(elem(&1, 2) == equipment_id))
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.filter(fn [{_, prev, _}, {_, gas, _}] -> gas != prev end)
+        |> Enum.map(fn [_, {minute, gas, _}] -> {minute, gas} end)
+
+      case Enum.take(changes, -2) do
+        [{_, _}, {last_change, _}] when latest_minute - last_change >= @gas_idle -> 0
+        [{m1, g1}, {m2, g2}] when g2 > g1 -> div((g2 - g1) * 3600, m2 - m1)
+        _ when changes == [] and latest_minute - elem(hd(rows), 0) >= @gas_idle -> 0
+        _ -> nil
+      end
+    else
+      _ -> nil
+    end
+  end
+
   @doc """
   Usage per UTC hour from `from` (inclusive) onwards.
 
