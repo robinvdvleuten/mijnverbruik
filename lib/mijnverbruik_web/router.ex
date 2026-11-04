@@ -18,6 +18,7 @@ defmodule MijnverbruikWeb.Router do
     pipe_through :browser
 
     live "/", DashboardLive
+    live "/settings", SettingsLive
   end
 
   # Other scopes may use custom stacks.

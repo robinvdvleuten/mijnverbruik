@@ -31,12 +31,19 @@ defmodule MijnverbruikWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :active, :atom, default: nil, doc: "the nav item of the current page"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-      <a href="/" class="text-sm font-semibold">mijnverbruik</a>
+    <header class="flex items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <nav class="flex items-center gap-1 text-sm" aria-label="Main">
+        <.link navigate={~p"/"} class="mr-3 font-semibold">mijnverbruik</.link>
+        <.nav_link :for={{key, label, path} <- nav_items()} path={path} active={@active == key}>
+          {label}
+        </.nav_link>
+      </nav>
       <.theme_toggle />
     </header>
 
@@ -47,6 +54,35 @@ defmodule MijnverbruikWeb.Layouts do
     </main>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  defp nav_items do
+    [
+      {:dashboard, "Now", ~p"/"},
+      {:settings, "Settings", ~p"/settings"}
+    ]
+  end
+
+  attr :path, :string, required: true
+  attr :active, :boolean, required: true
+  slot :inner_block, required: true
+
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@path}
+      aria-current={@active && "page"}
+      class={[
+        "rounded-full px-3 py-1 transition-colors",
+        if(@active,
+          do: "bg-base-300 text-base-content",
+          else: "text-base-content/60 hover:text-base-content"
+        )
+      ]}
+    >
+      {render_slot(@inner_block)}
+    </.link>
     """
   end
 

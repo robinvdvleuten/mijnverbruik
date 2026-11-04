@@ -63,7 +63,7 @@ defmodule MijnverbruikWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} active={:dashboard}>
       <section aria-labelledby="now" class="space-y-4">
         <h2 id="now" class="text-sm font-medium text-base-content/60">Now</h2>
         <%= if @live do %>
@@ -113,7 +113,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
       <section aria-labelledby="today" class="mt-10 space-y-3">
         <h2 id="today" class="text-sm font-medium text-base-content/60">Today</h2>
-        <dl class="grid grid-cols-2 gap-3">
+        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div class="rounded-xl border border-base-300 p-3">
             <dt class="text-xs text-base-content/60">Electricity</dt>
             <dd id="today-electricity" class="text-2xl font-medium tabular-nums">
@@ -128,6 +128,17 @@ defmodule MijnverbruikWeb.DashboardLive do
             <dd id="today-gas" class="text-2xl font-medium tabular-nums">
               {m3(@today.gas_l)} m³
             </dd>
+          </div>
+          <div class="col-span-2 rounded-xl border border-base-300 p-3 sm:col-span-1">
+            <dt class="text-xs text-base-content/60">Costs</dt>
+            <%= if @today.cost do %>
+              <dd id="today-cost" class="text-2xl font-medium tabular-nums">{euro(@today.cost)}</dd>
+              <dd class="text-xs text-base-content/60">incl. fixed costs</dd>
+            <% else %>
+              <dd id="today-cost" class="pt-1 text-sm">
+                <.link navigate={~p"/settings"} class="link link-primary">Add your tariffs</.link>
+              </dd>
+            <% end %>
           </div>
         </dl>
       </section>
