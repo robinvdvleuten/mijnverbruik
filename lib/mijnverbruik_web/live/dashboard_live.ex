@@ -1,6 +1,8 @@
 defmodule MijnverbruikWeb.DashboardLive do
   use MijnverbruikWeb, :live_view
 
+  import MijnverbruikWeb.{Charts, Format}
+
   alias Mijnverbruik.{Meter, Readings}
 
   @impl true
@@ -40,14 +42,14 @@ defmodule MijnverbruikWeb.DashboardLive do
 
     hours =
       for hour <- first_hour..(first_hour + 23 * 3600)//3600 do
-        usage = Map.get(by_hour, hour, %{delivered_wh: 0})
+        usage = Map.get(by_hour, hour, %{delivered_wh: 0, returned_wh: 0, gas_l: 0})
         local = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz)
-        %{label: Calendar.strftime(local, "%H:00"), value: usage.delivered_wh}
+        Map.put(usage, :label, Calendar.strftime(local, "%H:00"))
       end
 
     days =
       for d <- Readings.daily(30, tz) do
-        %{label: Calendar.strftime(d.date, "%a %d %b"), value: d.delivered_wh}
+        Map.put(d, :label, Calendar.strftime(d.date, "%a %d %b"))
       end
 
     assign(socket,
@@ -130,53 +132,18 @@ defmodule MijnverbruikWeb.DashboardLive do
         </dl>
       </section>
 
-      <.bars id="hours" title="Last 24 hours" bars={@hours} />
-      <.bars id="days" title="Last 30 days" bars={@days} />
+      <.bars id="hours" title="Electricity · last 24 hours" unit={:kwh} bars={electricity(@hours)} />
+      <.bars id="hours-gas" title="Gas · last 24 hours" unit={:m3} bars={gas(@hours)} />
+      <.bars id="days" title="Electricity · last 30 days" unit={:kwh} bars={electricity(@days)} />
+      <.bars id="days-gas" title="Gas · last 30 days" unit={:m3} bars={gas(@days)} />
     </Layouts.app>
     """
   end
 
-  attr :id, :string, required: true
-  attr :title, :string, required: true
-  attr :bars, :list, required: true, doc: "maps with :label and :value (Wh)"
+  defp electricity(usage),
+    do: Enum.map(usage, &%{label: &1.label, up: &1.delivered_wh, down: &1.returned_wh})
 
-  defp bars(assigns) do
-    max = assigns.bars |> Enum.map(& &1.value) |> Enum.max(fn -> 0 end) |> max(1)
-    assigns = assign(assigns, max: max, width: 100 / max(length(assigns.bars), 1))
-
-    ~H"""
-    <section aria-labelledby={"#{@id}-title"} class="mt-10 space-y-3">
-      <div class="flex items-baseline justify-between">
-        <h2 id={"#{@id}-title"} class="text-sm font-medium text-base-content/60">{@title}</h2>
-        <p class="text-xs tabular-nums text-base-content/60">max {kwh(@max)} kWh</p>
-      </div>
-      <svg
-        id={@id}
-        viewBox="0 0 100 40"
-        preserveAspectRatio="none"
-        class="h-40 w-full text-primary"
-        role="img"
-        aria-label={"#{@title}, electricity per bar in kWh"}
-      >
-        <rect
-          :for={{bar, i} <- Enum.with_index(@bars)}
-          x={i * @width + @width * 0.1}
-          y={40 - bar.value / @max * 40}
-          width={@width * 0.8}
-          height={bar.value / @max * 40}
-          fill="currentColor"
-          rx="0.5"
-        >
-          <title>{bar.label}: {kwh(bar.value)} kWh</title>
-        </rect>
-      </svg>
-      <div class="flex justify-between text-xs text-base-content/60">
-        <span>{List.first(@bars).label}</span>
-        <span>{List.last(@bars).label}</span>
-      </div>
-    </section>
-    """
-  end
+  defp gas(usage), do: Enum.map(usage, &%{label: &1.label, up: &1.gas_l})
 
   # Telegrams arrive every second; 10 seconds without one means the values on
   # screen no longer describe now.
@@ -197,7 +164,4 @@ defmodule MijnverbruikWeb.DashboardLive do
   defp ago(seconds), do: "#{div(seconds, 3600)} h ago"
 
   defp now, do: System.os_time(:second)
-
-  defp kwh(wh), do: :erlang.float_to_binary(wh / 1000, decimals: 2)
-  defp m3(l), do: :erlang.float_to_binary(l / 1000, decimals: 2)
 end
