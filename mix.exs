@@ -83,7 +83,7 @@ defmodule Mijnverbruik.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build", &install_git_hooks/1],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
@@ -96,5 +96,14 @@ defmodule Mijnverbruik.MixProject do
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
+  end
+
+  # Points git at the tracked hooks in .githooks (commit message linting).
+  # Skipped outside a git checkout, e.g. when building from a tarball.
+  defp install_git_hooks(_args) do
+    case System.cmd("git", ["config", "core.hooksPath", ".githooks"], stderr_to_stdout: true) do
+      {_, 0} -> Mix.shell().info("Installed git hooks from .githooks")
+      {output, _} -> Mix.shell().info("Skipped git hooks: #{String.trim(output)}")
+    end
   end
 end

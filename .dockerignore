@@ -50,3 +50,7 @@ erl_crash.dump
 *.db
 *.db-*
 .env
+
+# Commit linting only
+/.vale/
+/.githooks/
