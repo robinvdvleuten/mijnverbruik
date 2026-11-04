@@ -3,7 +3,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   import MijnverbruikWeb.{Charts, Format}
 
-  alias Mijnverbruik.{Meter, Readings}
+  alias Mijnverbruik.{Insights, Meter, Readings}
   alias Mijnverbruik.Meter.Trend
 
   @impl true
@@ -63,7 +63,8 @@ defmodule MijnverbruikWeb.DashboardLive do
     assign(socket,
       today: Readings.today(tz),
       gas_flow_l: Readings.gas_flow(),
-      hours: hours
+      hours: hours,
+      insights: Insights.summary(tz)
     )
   end
 
@@ -71,6 +72,18 @@ defmodule MijnverbruikWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} active={:dashboard}>
+      <ul :if={@insights.warnings != []} id="warnings" class="mb-8 space-y-3">
+        <li
+          :for={warning <- @insights.warnings}
+          id={"warning-#{elem(warning, 0)}"}
+          role="alert"
+          class="flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm"
+        >
+          <.icon name="hero-exclamation-triangle" class="mt-0.5 size-5 shrink-0 text-warning" />
+          <div>{warning_text(warning)}</div>
+        </li>
+      </ul>
+
       <section aria-labelledby="now" class="space-y-4">
         <h2 id="now" class="text-sm font-medium text-base-content/60">Now</h2>
         <%= if @live do %>
@@ -141,7 +154,7 @@ defmodule MijnverbruikWeb.DashboardLive do
             <dt class="text-xs text-base-content/60">Costs</dt>
             <%= if @today.cost do %>
               <dd id="today-cost" class="text-2xl font-medium tabular-nums">{euro(@today.cost)}</dd>
-              <dd class="text-xs text-base-content/60">incl. fixed costs</dd>
+              <dd class="text-xs text-base-content/60">incl. fixed costs so far</dd>
             <% else %>
               <dd id="today-cost" class="pt-1 text-sm">
                 <.link navigate={~p"/settings"} class="link link-primary">Add your tariffs</.link>
@@ -149,6 +162,22 @@ defmodule MijnverbruikWeb.DashboardLive do
             <% end %>
           </div>
         </dl>
+      </section>
+
+      <section :if={@insights.standby_w} aria-labelledby="insights" class="mt-10 space-y-3">
+        <h2 id="insights" class="text-sm font-medium text-base-content/60">Insights</h2>
+        <div id="standby" class="rounded-xl border border-base-300 p-3">
+          <div class="flex items-baseline justify-between gap-3">
+            <p class="text-xs text-base-content/60">Standby power</p>
+            <p :if={@insights.standby_cost_year} class="text-xs tabular-nums text-base-content/60">
+              ≈ €{round(@insights.standby_cost_year)} per year
+            </p>
+          </div>
+          <p class="text-2xl font-medium tabular-nums">{@insights.standby_w} W</p>
+          <p class="mt-1 text-xs text-base-content/60">
+            The lowest hourly use between midnight and 6:00 over the last 7 nights: devices that are always on.
+          </p>
+        </div>
       </section>
 
       <.bars id="hours" title="Electricity · last 24 hours" unit={:kwh} bars={electricity(@hours)} />
@@ -162,6 +191,14 @@ defmodule MijnverbruikWeb.DashboardLive do
       </.link>
     </Layouts.app>
     """
+  end
+
+  defp warning_text({:standby_high, last_night, usual}) do
+    "Standby power was #{last_night} W last night, against #{round(usual)} W usually. Something may have been left on."
+  end
+
+  defp warning_text({:gas_at_night, litres}) do
+    "Gas flowed steadily between 01:00 and 05:00 last night (#{litres} litres). If your heating and hot water were off, check for a gas leak."
   end
 
   defp electricity(usage),
