@@ -101,8 +101,17 @@ defmodule MijnverbruikWeb.DashboardLive do
             "space-y-4 transition-opacity",
             @status && "opacity-40"
           ]}>
-            <p id="power" class="text-6xl font-semibold tabular-nums tracking-tight">
-              {@live.power_w}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
+            <p
+              id="power"
+              class={[
+                "text-6xl font-semibold tabular-nums tracking-tight transition-colors",
+                @live.power_w < 0 && "text-success"
+              ]}
+            >
+              {abs(@live.power_w)}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
+              <span class="ml-1 text-base font-normal tracking-normal text-base-content/60">
+                {if @live.power_w < 0, do: "returning to the grid", else: "from the grid"}
+              </span>
             </p>
             <.trend id="trend" samples={@samples} now={@now} window={Trend.window()} />
             <p
@@ -227,6 +236,7 @@ defmodule MijnverbruikWeb.DashboardLive do
         </p>
         <.bars
           id="prices"
+          class="mt-3"
           title="Electricity price · today and tomorrow"
           unit={:eur_kwh}
           bars={@prices.bars}

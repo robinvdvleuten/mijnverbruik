@@ -11,6 +11,7 @@ defmodule MijnverbruikWeb.Charts do
   attr :id, :string, required: true
   attr :title, :string, required: true
   attr :unit, :atom, values: [:kwh, :m3, :eur_kwh], required: true
+  attr :class, :any, default: "mt-10"
 
   attr :highlight, :integer,
     default: nil,
@@ -26,101 +27,216 @@ defmodule MijnverbruikWeb.Charts do
   Bar chart with usage going up from the zero line and, when any bar has a
   `:down` value, return going down from it. Values are Wh for `:kwh`,
   litres for `:m3` and euros for `:eur_kwh`.
+
+  Hovering or tapping a bar shows its value above the chart.
   """
   def bars(assigns) do
     all = assigns.bars ++ (assigns.compare || [])
     up_max = all |> Enum.map(& &1.up) |> Enum.max(fn -> 0 end)
     down_max = all |> Enum.map(&Map.get(&1, :down, 0)) |> Enum.max(fn -> 0 end)
     scale = if up_max + down_max > 0, do: @height / (up_max + down_max), else: 0
+    zero = up_max * scale
+    count = length(assigns.bars)
 
     assigns =
       assign(assigns,
         ghosts: Enum.with_index(assigns.compare || []),
-        up_max: up_max,
         down_max: down_max,
         scale: scale,
-        zero: up_max * scale,
-        width: 100 / max(length(assigns.bars), 1),
-        height: @height
+        zero: zero,
+        width: 100 / max(count, 1),
+        height: @height,
+        grid: for(v <- gridlines(up_max), do: {v, (zero - v * scale) / @height * 100}),
+        ticks: ticks(assigns.bars),
+        summary: summary(up_max, down_max, assigns.unit)
       )
 
     ~H"""
-    <section aria-labelledby={"#{@id}-title"} class="mt-10 space-y-3">
-      <div class="flex items-baseline justify-between">
+    <section
+      id={"#{@id}-chart"}
+      aria-labelledby={"#{@id}-title"}
+      class={["space-y-3", @class]}
+      phx-hook=".BarReadout"
+    >
+      <div class="flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 id={"#{@id}-title"} class="text-sm font-medium text-base-content/60">{@title}</h2>
-        <p class="text-xs tabular-nums text-base-content/60">
-          max {value(@up_max, @unit)}
-          <span :if={@down_max > 0 and @unit == :eur_kwh}>
-            · lowest {value(-@down_max, @unit)}
-          </span>
-          <span :if={@down_max > 0 and @unit != :eur_kwh}>
-            · returned max {value(@down_max, @unit)}
-          </span>
+        <p
+          id={"#{@id}-readout"}
+          class="text-xs tabular-nums text-base-content/60"
+          aria-live="polite"
+          data-readout
+          data-default={@summary}
+        >
+          {@summary}
         </p>
       </div>
-      <svg
-        id={@id}
-        viewBox={"0 0 100 #{@height}"}
-        preserveAspectRatio="none"
-        class="h-40 w-full"
-        role="img"
-        aria-label={"#{@title}, per bar in #{unit(@unit)}"}
-      >
-        <line
-          :if={@down_max > 0}
-          x1="0"
-          x2="100"
-          y1={@zero}
-          y2={@zero}
-          class="stroke-base-content/20"
-          stroke-width="0.2"
-          vector-effect="non-scaling-stroke"
-        />
-        <g :for={{bar, i} <- @ghosts} class="fill-base-content/10" aria-hidden="true">
-          <rect
-            x={i * @width + @width * 0.02}
-            y={@zero - bar.up * @scale}
-            width={@width * 0.96}
-            height={bar.up * @scale}
-            rx="0.5"
+      <div class="relative">
+        <svg
+          id={@id}
+          viewBox={"0 0 100 #{@height}"}
+          preserveAspectRatio="none"
+          class="h-40 w-full touch-pan-y"
+          role="img"
+          aria-label={"#{@title}, per bar in #{unit(@unit)}"}
+        >
+          <line
+            :for={{_value, y} <- @grid}
+            x1="0"
+            x2="100"
+            y1={y / 100 * @height}
+            y2={y / 100 * @height}
+            class="stroke-base-content/10"
+            stroke-width="1"
+            stroke-dasharray="2 3"
+            vector-effect="non-scaling-stroke"
           />
-          <rect
-            :if={Map.get(bar, :down, 0) > 0}
-            x={i * @width + @width * 0.02}
-            y={@zero}
-            width={@width * 0.96}
-            height={bar.down * @scale}
-            rx="0.5"
+          <line
+            x1="0"
+            x2="100"
+            y1={@zero}
+            y2={@zero}
+            class="stroke-base-content/20"
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
           />
-        </g>
-        <g :for={{bar, i} <- Enum.with_index(@bars)}>
-          <title>{bar_title(bar, @unit)}</title>
-          <rect
-            x={i * @width + @width * 0.1}
-            y={@zero - bar.up * @scale}
-            width={@width * 0.8}
-            height={bar.up * @scale}
-            class={["fill-primary", @highlight && @highlight != i && "opacity-40"]}
-            rx="0.5"
-          />
-          <rect
-            :if={Map.get(bar, :down, 0) > 0}
-            x={i * @width + @width * 0.1}
-            y={@zero}
-            width={@width * 0.8}
-            height={bar.down * @scale}
-            class={["fill-success", @highlight && @highlight != i && "opacity-40"]}
-            rx="0.5"
-          />
-        </g>
-      </svg>
-      <div class="flex justify-between text-xs text-base-content/60">
-        <span>{List.first(@bars).label}</span>
-        <span>{List.last(@bars).label}</span>
+          <g :for={{bar, i} <- @ghosts} class="fill-base-content/10" aria-hidden="true">
+            <rect
+              x={i * @width + @width * 0.02}
+              y={@zero - bar.up * @scale}
+              width={@width * 0.96}
+              height={bar.up * @scale}
+              rx="0.5"
+            />
+            <rect
+              :if={Map.get(bar, :down, 0) > 0}
+              x={i * @width + @width * 0.02}
+              y={@zero}
+              width={@width * 0.96}
+              height={bar.down * @scale}
+              rx="0.5"
+            />
+          </g>
+          <g
+            :for={{bar, i} <- Enum.with_index(@bars)}
+            data-bar={bar_title(bar, @unit)}
+            class={["transition-opacity", @highlight && @highlight != i && "opacity-40"]}
+          >
+            <title>{bar_title(bar, @unit)}</title>
+            <rect
+              x={i * @width}
+              y="0"
+              width={@width}
+              height={@height}
+              fill="transparent"
+            />
+            <rect
+              x={i * @width + @width * 0.1}
+              y={@zero - bar.up * @scale}
+              width={@width * 0.8}
+              height={bar.up * @scale}
+              class="fill-primary"
+              rx="0.5"
+            />
+            <rect
+              :if={Map.get(bar, :down, 0) > 0}
+              x={i * @width + @width * 0.1}
+              y={@zero}
+              width={@width * 0.8}
+              height={bar.down * @scale}
+              class="fill-success"
+              rx="0.5"
+            />
+          </g>
+        </svg>
+        <span
+          :for={{value, top} <- @grid}
+          class="pointer-events-none absolute left-0 -translate-y-full pb-0.5 text-[10px] tabular-nums text-base-content/50"
+          style={"top: #{top}%"}
+          aria-hidden="true"
+        >
+          {value(value, @unit)}
+        </span>
       </div>
+      <div class="relative h-4 text-xs text-base-content/60" aria-hidden="true">
+        <span
+          :for={{label, i} <- @ticks}
+          class={["absolute whitespace-nowrap", i > 0 && "-translate-x-1/2"]}
+          style={"left: #{if i == 0, do: 0, else: (i + 0.5) * @width}%"}
+        >
+          {label}
+        </span>
+      </div>
+      <p :if={@down_max > 0 and @unit != :eur_kwh} class="flex gap-4 text-xs text-base-content/60">
+        <span class="flex items-center gap-1.5">
+          <span class="size-2 rounded-sm bg-primary"></span>Used
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="size-2 rounded-sm bg-success"></span>Returned
+        </span>
+        <span :if={@compare} class="flex items-center gap-1.5">
+          <span class="size-2 rounded-sm bg-base-content/10"></span>Period before
+        </span>
+      </p>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".BarReadout">
+        export default {
+          mounted() {
+            this.active = null
+            const pick = (e) => {
+              const bar = e.target.closest("[data-bar]")
+              if (!bar) return
+              this.active = [...this.el.querySelectorAll("[data-bar]")].indexOf(bar)
+              this.render()
+            }
+            this.el.addEventListener("pointerover", pick)
+            this.el.addEventListener("pointerdown", pick)
+            this.el.addEventListener("pointerleave", (e) => {
+              if (e.pointerType === "mouse") { this.active = null; this.render() }
+            })
+          },
+          updated() { this.render() },
+          render() {
+            const readout = this.el.querySelector("[data-readout]")
+            const bars = [...this.el.querySelectorAll("[data-bar]")]
+            const active = bars[this.active]
+            readout.textContent = active ? active.dataset.bar : readout.dataset.default
+            readout.classList.toggle("text-base-content", !!active)
+            bars.forEach((bar) => { bar.style.opacity = !active ? "" : bar === active ? "1" : "0.4" })
+          }
+        }
+      </script>
     </section>
     """
   end
+
+  # Two or three round values between zero and `max`.
+  defp gridlines(max) when max <= 0, do: []
+
+  defp gridlines(max) do
+    raw = max / 3
+    magnitude = :math.pow(10, :math.floor(:math.log10(raw)))
+    step = Enum.find([1, 2, 2.5, 5, 10], &(&1 * magnitude >= raw)) * magnitude
+
+    1
+    |> Stream.iterate(&(&1 + 1))
+    |> Stream.map(&(&1 * step))
+    |> Enum.take_while(&(&1 <= max))
+  end
+
+  # At most six evenly spaced labels, on steps that suit hours, days and months.
+  defp ticks(bars) do
+    count = length(bars)
+    step = Enum.find([1, 2, 3, 4, 6, 7, 12, 24], 24, &(ceil(count / &1) <= 6))
+
+    for {bar, i} <- Enum.with_index(bars), rem(i, step) == 0, do: {bar.label, i}
+  end
+
+  defp summary(up_max, down_max, :eur_kwh) when down_max > 0,
+    do: "max #{value(up_max, :eur_kwh)} · lowest #{value(-down_max, :eur_kwh)}"
+
+  defp summary(up_max, down_max, unit) when down_max > 0,
+    do: "max #{value(up_max, unit)} · returned max #{value(down_max, unit)}"
+
+  defp summary(up_max, _down_max, unit), do: "max #{value(up_max, unit)}"
 
   attr :id, :string, required: true
   attr :samples, :list, required: true, doc: "`{unix_seconds, watts}` tuples, oldest first"
@@ -186,15 +302,33 @@ defmodule MijnverbruikWeb.Charts do
           stroke-width="1"
           vector-effect="non-scaling-stroke"
         />
-        <g :for={path <- @paths}>
-          <path d={path.area} class="fill-primary/15" />
-          <path
-            d={path.line}
-            class="fill-none stroke-primary"
-            stroke-width="1.5"
-            stroke-linejoin="round"
-            vector-effect="non-scaling-stroke"
-          />
+        <defs>
+          <clipPath id={"#{@id}-use"}>
+            <rect x="0" y="0" width="100" height={@zero} />
+          </clipPath>
+          <clipPath id={"#{@id}-return"}>
+            <rect x="0" y={@zero} width="100" height={@height - @zero} />
+          </clipPath>
+        </defs>
+        <g
+          :for={
+            {clip, fill, stroke} <- [
+              {"use", "fill-primary/15", "stroke-primary"},
+              {"return", "fill-success/15", "stroke-success"}
+            ]
+          }
+          clip-path={"url(##{@id}-#{clip})"}
+        >
+          <g :for={path <- @paths}>
+            <path d={path.area} class={fill} />
+            <path
+              d={path.line}
+              class={["fill-none", stroke]}
+              stroke-width="1.5"
+              stroke-linejoin="round"
+              vector-effect="non-scaling-stroke"
+            />
+          </g>
         </g>
       </svg>
       <figcaption class="flex justify-between text-xs text-base-content/60">

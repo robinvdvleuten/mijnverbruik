@@ -39,12 +39,12 @@ defmodule MijnverbruikWeb.Layouts do
     ~H"""
     <header class="flex items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
       <nav class="flex items-center gap-1 text-sm" aria-label="Main">
-        <.link navigate={~p"/"} class="mr-3 font-semibold">mijnverbruik</.link>
+        <.link navigate={~p"/"} class="mr-3 hidden font-semibold sm:inline">mijnverbruik</.link>
         <.nav_link :for={{key, label, path} <- nav_items()} path={path} active={@active == key}>
           {label}
         </.nav_link>
       </nav>
-      <.theme_toggle />
+      <div class="shrink-0"><.theme_toggle /></div>
     </header>
 
     <main class="px-4 py-8 sm:px-6 lg:px-8">
