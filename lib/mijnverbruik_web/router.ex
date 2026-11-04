@@ -18,6 +18,7 @@ defmodule MijnverbruikWeb.Router do
     pipe_through :browser
 
     live "/", DashboardLive
+    live "/history", HistoryLive
     live "/settings", SettingsLive
   end
 

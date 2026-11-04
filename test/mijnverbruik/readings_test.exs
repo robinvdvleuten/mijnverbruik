@@ -1,5 +1,5 @@
 defmodule Mijnverbruik.ReadingsTest do
-  use Mijnverbruik.DataCase, async: true
+  use Mijnverbruik.DataCase, async: false
 
   import Mijnverbruik.TelegramFixtures
 

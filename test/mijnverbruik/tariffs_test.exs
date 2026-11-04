@@ -1,5 +1,5 @@
 defmodule Mijnverbruik.TariffsTest do
-  use Mijnverbruik.DataCase, async: true
+  use Mijnverbruik.DataCase, async: false
 
   alias Mijnverbruik.{Readings, Tariffs}
   alias Mijnverbruik.Readings.Reading

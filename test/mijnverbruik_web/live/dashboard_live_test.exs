@@ -8,9 +8,7 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
     {:ok, view, html} = live(conn, ~p"/")
     assert html =~ "Waiting for the meter"
     assert has_element?(view, "#hours")
-    assert has_element?(view, "#days")
     assert has_element?(view, "#hours-gas")
-    assert has_element?(view, "#days-gas")
 
     {:ok, telegram} = DSMR.parse(raw_telegram())
     send(view.pid, {:telegram, telegram})

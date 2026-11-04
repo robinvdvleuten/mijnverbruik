@@ -60,6 +60,7 @@ defmodule MijnverbruikWeb.Layouts do
   defp nav_items do
     [
       {:dashboard, "Now", ~p"/"},
+      {:history, "History", ~p"/history"},
       {:settings, "Settings", ~p"/settings"}
     ]
   end

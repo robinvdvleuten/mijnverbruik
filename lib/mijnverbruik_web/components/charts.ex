@@ -13,18 +13,24 @@ defmodule MijnverbruikWeb.Charts do
   attr :unit, :atom, values: [:kwh, :m3], required: true
   attr :bars, :list, required: true, doc: "maps with :label, :up and optional :down"
 
+  attr :compare, :list,
+    default: nil,
+    doc: "maps with :up and optional :down, drawn as ghost bars behind `bars` by position"
+
   @doc """
   Bar chart with usage going up from the zero line and, when any bar has a
   `:down` value, return going down from it. Values are Wh for `:kwh` and
   litres for `:m3`.
   """
   def bars(assigns) do
-    up_max = assigns.bars |> Enum.map(& &1.up) |> Enum.max(fn -> 0 end)
-    down_max = assigns.bars |> Enum.map(&Map.get(&1, :down, 0)) |> Enum.max(fn -> 0 end)
+    all = assigns.bars ++ (assigns.compare || [])
+    up_max = all |> Enum.map(& &1.up) |> Enum.max(fn -> 0 end)
+    down_max = all |> Enum.map(&Map.get(&1, :down, 0)) |> Enum.max(fn -> 0 end)
     scale = @height / max(up_max + down_max, 1)
 
     assigns =
       assign(assigns,
+        ghosts: Enum.with_index(assigns.compare || []),
         up_max: up_max,
         down_max: down_max,
         scale: scale,
@@ -60,6 +66,23 @@ defmodule MijnverbruikWeb.Charts do
           stroke-width="0.2"
           vector-effect="non-scaling-stroke"
         />
+        <g :for={{bar, i} <- @ghosts} class="fill-base-content/10" aria-hidden="true">
+          <rect
+            x={i * @width + @width * 0.02}
+            y={@zero - bar.up * @scale}
+            width={@width * 0.96}
+            height={bar.up * @scale}
+            rx="0.5"
+          />
+          <rect
+            :if={Map.get(bar, :down, 0) > 0}
+            x={i * @width + @width * 0.02}
+            y={@zero}
+            width={@width * 0.96}
+            height={bar.down * @scale}
+            rx="0.5"
+          />
+        </g>
         <g :for={{bar, i} <- Enum.with_index(@bars)}>
           <title>{bar_title(bar, @unit)}</title>
           <rect

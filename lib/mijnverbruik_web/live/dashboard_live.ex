@@ -60,16 +60,10 @@ defmodule MijnverbruikWeb.DashboardLive do
         Map.put(usage, :label, Calendar.strftime(local, "%H:00"))
       end
 
-    days =
-      for d <- Readings.daily(30, tz) do
-        Map.put(d, :label, Calendar.strftime(d.date, "%a %d %b"))
-      end
-
     assign(socket,
       today: Readings.today(tz),
       gas_flow_l: Readings.gas_flow(),
-      hours: hours,
-      days: days
+      hours: hours
     )
   end
 
@@ -159,8 +153,13 @@ defmodule MijnverbruikWeb.DashboardLive do
 
       <.bars id="hours" title="Electricity · last 24 hours" unit={:kwh} bars={electricity(@hours)} />
       <.bars id="hours-gas" title="Gas · last 24 hours" unit={:m3} bars={gas(@hours)} />
-      <.bars id="days" title="Electricity · last 30 days" unit={:kwh} bars={electricity(@days)} />
-      <.bars id="days-gas" title="Gas · last 30 days" unit={:m3} bars={gas(@days)} />
+      <.link
+        navigate={~p"/history"}
+        id="history-link"
+        class="mt-6 inline-flex items-center gap-1 text-sm link link-hover text-base-content/60"
+      >
+        Days, weeks, months and years in History <.icon name="hero-arrow-right" class="size-4" />
+      </.link>
     </Layouts.app>
     """
   end

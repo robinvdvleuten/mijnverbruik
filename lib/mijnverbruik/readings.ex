@@ -121,7 +121,7 @@ defmodule Mijnverbruik.Readings do
   end
 
   @doc """
-  Usage per UTC hour from `from` (inclusive) onwards.
+  Usage per UTC hour from `from` (inclusive) until `to` (exclusive, or now).
 
   Each hour runs from its first reading to the first reading of the next hour
   with data, so energy used during a gap is attributed to the hour before it.
@@ -129,7 +129,11 @@ defmodule Mijnverbruik.Readings do
   `:hour` (unix seconds), `:delivered_wh` split into `:delivered_t1_wh` (low
   tariff) and `:delivered_t2_wh` (normal tariff), `:returned_wh` and `:gas_l`.
   """
-  def hourly(%DateTime{} = from) do
+  def hourly(%DateTime{} = from, to \\ nil) do
+    # The hour after `to` is read too, since the last hour ends at its first reading.
+    stop = if to, do: DateTime.to_unix(to), else: :infinity
+    until = if to, do: DateTime.to_unix(to) + 3600, else: 9_999_999_999
+
     sql = """
     WITH buckets AS (
       SELECT minute / 3600 * 3600 AS hour, equipment_id,
@@ -142,7 +146,7 @@ defmodule Mijnverbruik.Readings do
              MIN(gas_l) AS g_start,
              MAX(gas_l) AS g_end
       FROM readings
-      WHERE minute >= ?1
+      WHERE minute >= ?1 AND minute < ?2
       GROUP BY hour, equipment_id
     )
     SELECT hour,
@@ -154,64 +158,118 @@ defmodule Mijnverbruik.Readings do
     WINDOW w AS (PARTITION BY equipment_id ORDER BY hour)
     """
 
-    %{rows: rows} = Repo.query!(sql, [DateTime.to_unix(from)])
+    %{rows: rows} = Repo.query!(sql, [DateTime.to_unix(from), until])
 
     rows
     |> Enum.map(fn [hour, d1, d2, r, g] ->
       %{hour: hour, delivered_t1_wh: d1, delivered_t2_wh: d2, returned_wh: r, gas_l: g || 0}
     end)
+    |> Enum.filter(&(&1.hour < stop))
     |> Enum.group_by(& &1.hour)
     |> Enum.map(fn {hour, parts} -> parts |> total() |> Map.put(:hour, hour) end)
     |> Enum.sort_by(& &1.hour)
   end
 
   @doc """
-  Usage and costs per local day for the last `days` days including today.
+  Usage and costs for every local hour of `date`, including hours without
+  data and hours still to come (23 or 25 hours when the clocks change).
 
-  `:cost` is the energy cost of the day plus its fixed costs, using the
-  tariff valid on that day, or nil when no tariff applies.
+  `:cost` is the hour's energy cost plus its share of the fixed costs, using
+  the tariff valid on `date`. It is nil when no tariff applies or the hour has
+  not started; the current hour gets the fixed costs elapsed so far.
   """
-  def daily(days, tz \\ timezone()) when days > 0 do
-    today = DateTime.now!(tz) |> DateTime.to_date()
-    first = Date.add(today, 1 - days)
-    tariffs = Tariffs.list_tariffs()
+  def hours(%Date{} = date, tz \\ timezone()) do
+    calendar_hours(date, Date.add(date, 1), tz)
+  end
 
-    totals =
-      first
-      |> local_midnight(tz)
-      |> hourly()
-      |> Enum.group_by(fn %{hour: hour} ->
-        hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> DateTime.to_date()
-      end)
+  @doc """
+  Usage and costs per local day from `first` to `last`, inclusive. A day's
+  `:cost` is the sum of its hour costs (see `hours/2`), or nil when none has
+  one.
+  """
+  def days(%Date{} = first, %Date{} = last, tz \\ timezone()) do
+    by_date = first |> calendar_hours(Date.add(last, 1), tz) |> Enum.group_by(& &1.date)
 
-    for date <- Date.range(first, today) do
-      usage = totals |> Map.get(date, []) |> total()
-
-      cost =
-        case Tariffs.valid_on(tariffs, date) do
-          nil -> nil
-          tariff -> Tariffs.energy_cost(tariff, usage) + Tariffs.fixed_per_day(tariff)
-        end
-
-      usage |> Map.put(:date, date) |> Map.put(:cost, cost)
+    for date <- Date.range(first, last) do
+      by_date |> Map.get(date, []) |> total() |> Map.put(:date, date)
     end
   end
 
   @doc """
-  Usage since local midnight.
+  Usage and costs per month of `year`; `:month` is the first day of the month.
+  """
+  def months(year, tz \\ timezone()) do
+    Date.new!(year, 1, 1)
+    |> days(Date.new!(year, 12, 31), tz)
+    |> Enum.chunk_by(& &1.date.month)
+    |> Enum.map(fn [first | _] = days -> days |> total() |> Map.put(:month, first.date) end)
+  end
+
+  @doc """
+  Usage and costs per local day for the last `days` days including today.
+  """
+  def daily(days, tz \\ timezone()) when days > 0 do
+    today = local_today(tz)
+    days(Date.add(today, 1 - days), today, tz)
+  end
+
+  @doc """
+  Usage and costs since local midnight.
   """
   def today(tz \\ timezone()) do
     [today] = daily(1, tz)
     today
   end
 
+  defp calendar_hours(%Date{} = first, %Date{} = stop, tz) do
+    start = first |> local_midnight(tz) |> DateTime.to_unix()
+    stop = stop |> local_midnight(tz) |> DateTime.to_unix()
+    start = start - rem(start, 3600)
+    now = System.os_time(:second)
+    tariffs = Tariffs.list_tariffs()
+
+    by_hour =
+      start
+      |> DateTime.from_unix!()
+      |> hourly(DateTime.from_unix!(stop))
+      |> Map.new(&{&1.hour, &1})
+
+    for hour <- start..(stop - 3600)//3600 do
+      date = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> DateTime.to_date()
+      usage = Map.get_lazy(by_hour, hour, fn -> [] |> total() |> Map.put(:hour, hour) end)
+      cost = hour_cost(Tariffs.valid_on(tariffs, date), usage, now - hour)
+      Map.merge(usage, %{date: date, cost: cost})
+    end
+  end
+
+  defp hour_cost(nil, _usage, _elapsed), do: nil
+  defp hour_cost(_tariff, _usage, elapsed) when elapsed < 0, do: nil
+
+  defp hour_cost(tariff, usage, elapsed) do
+    Tariffs.energy_cost(tariff, usage) +
+      Tariffs.fixed_per_day(tariff) / 24 * min(elapsed, 3600) / 3600
+  end
+
+  defp local_today(tz), do: tz |> DateTime.now!() |> DateTime.to_date()
+
   defp local_midnight(date, tz), do: DateTime.new!(date, ~T[00:00:00], tz)
 
   @usage_keys [:delivered_t1_wh, :delivered_t2_wh, :returned_wh, :gas_l]
 
-  defp total(parts) do
+  @doc """
+  Sums usage maps. Costs sum when any part has one, so a period without any
+  tariff stays nil.
+  """
+  def total(parts) do
     usage = Map.new(@usage_keys, fn key -> {key, parts |> Enum.map(& &1[key]) |> Enum.sum()} end)
-    Map.put(usage, :delivered_wh, usage.delivered_t1_wh + usage.delivered_t2_wh)
+
+    cost =
+      case parts |> Enum.map(&Map.get(&1, :cost)) |> Enum.reject(&is_nil/1) do
+        [] -> nil
+        costs -> Enum.sum(costs)
+      end
+
+    Map.merge(usage, %{delivered_wh: usage.delivered_t1_wh + usage.delivered_t2_wh, cost: cost})
   end
 
   defp timezone, do: Application.fetch_env!(:mijnverbruik, :timezone)

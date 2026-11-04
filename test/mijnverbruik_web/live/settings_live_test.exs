@@ -1,5 +1,5 @@
 defmodule MijnverbruikWeb.SettingsLiveTest do
-  use MijnverbruikWeb.ConnCase, async: true
+  use MijnverbruikWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
