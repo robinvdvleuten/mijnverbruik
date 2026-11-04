@@ -1,4 +1,6 @@
-# Runs mijnverbruik with its SQLite database in ./data.
+# Runs mijnverbruik with its SQLite database in ./data, using the image CI
+# publishes from main. To run local changes, build it with
+# `docker build -t ghcr.io/robinvdvleuten/mijnverbruik:latest .` first.
 #
 # Set these in a `.env` file next to this one, or replace them below:
 #   METER_HOST       address of the P1 bridge (e.g. a SlimmeLezer with esp-link)
@@ -6,7 +8,7 @@
 #   SECRET_KEY_BASE  generate with `mix phx.gen.secret` or `openssl rand -base64 48`
 services:
   mijnverbruik:
-    build: .
+    image: ghcr.io/robinvdvleuten/mijnverbruik:latest
     restart: unless-stopped
     ports:
       - "4000:4000"
