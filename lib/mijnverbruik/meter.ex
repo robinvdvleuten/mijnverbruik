@@ -1,6 +1,7 @@
 defmodule Mijnverbruik.Meter do
   @moduledoc """
-  Live meter data: telegrams broadcast by `Mijnverbruik.Meter.Reader`.
+  Live meter data: telegrams broadcast by `Mijnverbruik.Meter.Reader`, and
+  `:meter_offline` when its connection fails.
   """
 
   @topic "telegrams"
@@ -9,6 +10,13 @@ defmodule Mijnverbruik.Meter do
 
   def broadcast(%DSMR.Telegram{} = telegram),
     do: Phoenix.PubSub.broadcast(Mijnverbruik.PubSub, @topic, {:telegram, telegram})
+
+  @doc """
+  Tells subscribers the connection to the meter was lost. The next telegram
+  means it is back.
+  """
+  def broadcast_offline,
+    do: Phoenix.PubSub.broadcast(Mijnverbruik.PubSub, @topic, :meter_offline)
 
   @doc """
   Instantaneous values from a telegram: net power in W (negative when

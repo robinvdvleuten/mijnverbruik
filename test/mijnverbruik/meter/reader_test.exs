@@ -34,6 +34,7 @@ defmodule Mijnverbruik.Meter.ReaderTest do
     assert_receive {:telegram, %DSMR.Telegram{version: "42"}}, 1_000
 
     :ok = :gen_tcp.close(client)
+    assert_receive :meter_offline, 1_000
     {:ok, client} = :gen_tcp.accept(listen, 1_000)
     :ok = :gen_tcp.send(client, raw_telegram())
     assert_receive {:telegram, %DSMR.Telegram{}}, 1_000

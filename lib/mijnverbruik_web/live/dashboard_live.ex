@@ -8,14 +8,27 @@ defmodule MijnverbruikWeb.DashboardLive do
     if connected?(socket) do
       Meter.subscribe()
       Readings.subscribe()
+      :timer.send_interval(1000, :tick)
     end
 
-    {:ok, socket |> assign(live: nil, page_title: "Verbruik") |> assign_usage()}
+    {:ok,
+     socket
+     |> assign(live: nil, live_at: nil, offline?: false, now: now(), page_title: "Verbruik")
+     |> assign_usage()}
   end
 
   @impl true
-  def handle_info({:telegram, telegram}, socket),
-    do: {:noreply, assign(socket, live: Meter.live(telegram))}
+  def handle_info({:telegram, telegram}, socket) do
+    now = now()
+
+    {:noreply,
+     assign(socket, live: Meter.live(telegram), live_at: now, now: now, offline?: false)}
+  end
+
+  def handle_info(:meter_offline, socket), do: {:noreply, assign(socket, offline?: true)}
+
+  def handle_info(:tick, socket), do: handle_info({:tick, now()}, socket)
+  def handle_info({:tick, now}, socket), do: {:noreply, assign(socket, now: now)}
 
   def handle_info({:recorded, _minute}, socket), do: {:noreply, assign_usage(socket)}
 
@@ -52,19 +65,33 @@ defmodule MijnverbruikWeb.DashboardLive do
       <section aria-labelledby="now" class="space-y-4">
         <h2 id="now" class="text-sm font-medium text-base-content/60">Now</h2>
         <%= if @live do %>
-          <p id="power" class="text-6xl font-semibold tabular-nums tracking-tight">
-            {@live.power_w}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
+          <p
+            :if={status = live_status(@offline?, @live_at, @now)}
+            id="meter-status"
+            role="status"
+            class="flex items-center gap-2 text-sm text-warning"
+          >
+            <.icon name="hero-signal-slash" class="size-4" />
+            {status}
           </p>
-          <ul class="grid grid-cols-3 gap-3">
-            <li
-              :for={{phase, i} <- Enum.with_index(@live.phases, 1)}
-              class="rounded-xl border border-base-300 p-3"
-            >
-              <p class="text-xs text-base-content/60">L{i}</p>
-              <p class="text-lg font-medium tabular-nums">{phase.power_w} W</p>
-              <p class="text-xs tabular-nums text-base-content/60">{phase.current_a} A</p>
-            </li>
-          </ul>
+          <div class={[
+            "space-y-4 transition-opacity",
+            live_status(@offline?, @live_at, @now) && "opacity-40"
+          ]}>
+            <p id="power" class="text-6xl font-semibold tabular-nums tracking-tight">
+              {@live.power_w}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
+            </p>
+            <ul class="grid grid-cols-3 gap-3">
+              <li
+                :for={{phase, i} <- Enum.with_index(@live.phases, 1)}
+                class="rounded-xl border border-base-300 p-3"
+              >
+                <p class="text-xs text-base-content/60">L{i}</p>
+                <p class="text-lg font-medium tabular-nums">{phase.power_w} W</p>
+                <p class="text-xs tabular-nums text-base-content/60">{phase.current_a} A</p>
+              </li>
+            </ul>
+          </div>
         <% else %>
           <p id="power" class="text-base-content/60">Waiting for the meter…</p>
         <% end %>
@@ -150,6 +177,26 @@ defmodule MijnverbruikWeb.DashboardLive do
     </section>
     """
   end
+
+  # Telegrams arrive every second; 10 seconds without one means the values on
+  # screen no longer describe now.
+  @stale_after 10
+
+  defp live_status(offline?, live_at, now) do
+    age = now - live_at
+
+    cond do
+      offline? -> "Meter offline · last update #{ago(age)}"
+      age > @stale_after -> "No data from the meter · last update #{ago(age)}"
+      true -> nil
+    end
+  end
+
+  defp ago(seconds) when seconds < 60, do: "#{max(seconds, 0)} s ago"
+  defp ago(seconds) when seconds < 3600, do: "#{div(seconds, 60)} min ago"
+  defp ago(seconds), do: "#{div(seconds, 3600)} h ago"
+
+  defp now, do: System.os_time(:second)
 
   defp kwh(wh), do: :erlang.float_to_binary(wh / 1000, decimals: 2)
   defp m3(l), do: :erlang.float_to_binary(l / 1000, decimals: 2)

@@ -65,6 +65,7 @@ defmodule Mijnverbruik.Meter.Reader do
   defp fail(state, reason) do
     Logger.warning("Meter connection #{state.host}:#{state.port} failed: #{inspect(reason)}")
     if state.socket, do: :gen_tcp.close(state.socket)
+    Meter.broadcast_offline()
     Process.send_after(self(), :reconnect, Keyword.get(state.opts, :backoff_ms, @backoff_ms))
     {:noreply, %{state | socket: nil, buffer: ""}}
   end

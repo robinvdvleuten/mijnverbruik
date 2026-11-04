@@ -33,4 +33,6 @@ defmodule Mijnverbruik.Meter.Recorder do
         {:noreply, state}
     end
   end
+
+  def handle_info(:meter_offline, state), do: {:noreply, state}
 end
