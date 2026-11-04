@@ -1,0 +1,20 @@
+# Runs mijnverbruik with its SQLite database in ./data.
+#
+# Set these in a `.env` file next to this one, or replace them below:
+#   METER_HOST       address of the P1 bridge (e.g. a SlimmeLezer with esp-link)
+#   PHX_HOST         hostname or IP you open in the browser
+#   SECRET_KEY_BASE  generate with `mix phx.gen.secret` or `openssl rand -base64 48`
+services:
+  mijnverbruik:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      METER_HOST: ${METER_HOST:?set METER_HOST to the P1 bridge address}
+      METER_PORT: ${METER_PORT:-23}
+      TIMEZONE: ${TIMEZONE:-Europe/Amsterdam}
+      PHX_HOST: ${PHX_HOST:?set PHX_HOST to the host you browse to}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE}
+    volumes:
+      - ./data:/data

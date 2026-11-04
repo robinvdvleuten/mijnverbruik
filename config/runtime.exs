@@ -70,12 +70,14 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  # Must match the host used in the browser, or LiveView's websocket origin
+  # check rejects the connection.
+  host = System.get_env("PHX_HOST") || "localhost"
 
   config :mijnverbruik, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :mijnverbruik, MijnverbruikWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: host],
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.

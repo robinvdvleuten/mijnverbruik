@@ -39,3 +39,8 @@ npm-debug.log
 *.db
 *.db-*
 
+
+# Local database volume from compose.yaml
+/data/
+
+.env

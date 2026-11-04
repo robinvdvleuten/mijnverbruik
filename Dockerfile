@@ -89,7 +89,14 @@ ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
 WORKDIR "/app"
-RUN chown nobody /app
+RUN chown nobody /app \
+  && mkdir /data \
+  && chown nobody /data
+
+# SQLite database lives here; mount a volume to keep it across upgrades.
+ENV DATABASE_PATH=/data/mijnverbruik.db
+VOLUME /data
+EXPOSE 4000
 
 # set runner ENV
 ENV MIX_ENV="prod"
