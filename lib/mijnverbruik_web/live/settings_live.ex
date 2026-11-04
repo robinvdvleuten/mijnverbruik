@@ -3,7 +3,8 @@ defmodule MijnverbruikWeb.SettingsLive do
 
   import MijnverbruikWeb.Format
 
-  alias Mijnverbruik.Tariffs
+  alias Mijnverbruik.{Settings, Tariffs}
+  alias Mijnverbruik.Settings.Setting
   alias Mijnverbruik.Tariffs.Tariff
 
   @impl true
@@ -13,6 +14,7 @@ defmodule MijnverbruikWeb.SettingsLive do
     {:ok,
      socket
      |> assign(page_title: "Settings")
+     |> assign(settings_form: to_form(Settings.change(Settings.get())))
      |> stream(:tariffs, tariffs)
      |> edit(new_tariff(tariffs))}
   end
@@ -50,6 +52,19 @@ defmodule MijnverbruikWeb.SettingsLive do
     end
   end
 
+  def handle_event("save_settings", %{"setting" => params}, socket) do
+    case Settings.update(params) do
+      {:ok, setting} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Settings saved")
+         |> assign(settings_form: to_form(Settings.change(setting)))}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, settings_form: to_form(changeset))}
+    end
+  end
+
   def handle_event("edit", %{"id" => id}, socket),
     do: {:noreply, edit(socket, Tariffs.get_tariff!(id))}
 
@@ -74,6 +89,34 @@ defmodule MijnverbruikWeb.SettingsLive do
     ~H"""
     <Layouts.app flash={@flash} active={:settings}>
       <h1 class="text-2xl font-semibold">Settings</h1>
+
+      <section aria-labelledby="connection-title" class="mt-8 space-y-4">
+        <div>
+          <h2 id="connection-title" class="text-sm font-medium">Main fuse</h2>
+          <p class="mt-1 text-sm text-base-content/60">
+            The rating per phase, printed on the main fuse in your meter cupboard (e.g. 3×25 A means 25 A). The dashboard then shows how close each phase is to tripping it.
+          </p>
+        </div>
+        <.form
+          for={@settings_form}
+          id="settings-form"
+          phx-submit="save_settings"
+          class="flex items-end gap-3 rounded-xl border border-base-300 p-4"
+        >
+          <div class="grow">
+            <.input
+              field={@settings_form[:main_fuse_a]}
+              type="select"
+              label="Main fuse per phase"
+              prompt="Not set"
+              options={Enum.map(Setting.fuses(), &{"#{&1} A", &1})}
+            />
+          </div>
+          <.button variant="primary" class="btn btn-primary mb-2" phx-disable-with="Saving…">
+            Save
+          </.button>
+        </.form>
+      </section>
 
       <section aria-labelledby="tariffs-title" class="mt-8 space-y-4">
         <div>

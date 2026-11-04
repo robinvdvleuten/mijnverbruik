@@ -1,5 +1,5 @@
 defmodule MijnverbruikWeb.DashboardLiveTest do
-  use MijnverbruikWeb.ConnCase, async: true
+  use MijnverbruikWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
   import Mijnverbruik.TelegramFixtures
@@ -31,5 +31,19 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
 
     send(view.pid, {:telegram, telegram})
     refute has_element?(view, "#meter-status")
+  end
+
+  test "shows phase load against the main fuse and warns near its limit", %{conn: conn} do
+    {:ok, _} = Mijnverbruik.Settings.update(%{main_fuse_a: 25})
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    {:ok, telegram} = DSMR.parse(raw_telegram())
+    send(view.pid, {:telegram, telegram})
+    assert has_element?(view, "#phase-2 [role=meter][aria-valuemax='25'][aria-valuenow='6']")
+    refute has_element?(view, "[id^=fuse-warning]")
+
+    telegram = put_in(telegram.phase_power_current_l2.value, 24)
+    send(view.pid, {:telegram, telegram})
+    assert has_element?(view, "#fuse-warning-2")
   end
 end

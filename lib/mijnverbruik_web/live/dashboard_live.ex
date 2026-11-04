@@ -3,7 +3,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   import MijnverbruikWeb.{Charts, Format}
 
-  alias Mijnverbruik.{Insights, Meter, Readings}
+  alias Mijnverbruik.{Insights, Meter, Readings, Settings}
   alias Mijnverbruik.Meter.Trend
 
   @impl true
@@ -20,7 +20,7 @@ defmodule MijnverbruikWeb.DashboardLive do
     {:ok,
      socket
      |> assign(live: live, live_at: live_at, samples: samples, offline?: false, now: now())
-     |> assign(page_title: "Verbruik")
+     |> assign(page_title: "Verbruik", fuse_a: Settings.get().main_fuse_a)
      |> assign_status()
      |> assign_usage()}
   end
@@ -104,14 +104,48 @@ defmodule MijnverbruikWeb.DashboardLive do
               {@live.power_w}<span class="ml-2 text-2xl font-normal text-base-content/60">W</span>
             </p>
             <.trend id="trend" samples={@samples} now={@now} window={Trend.window()} />
+            <p
+              :for={{phase, i} <- Enum.with_index(@live.phases, 1)}
+              :if={load_level(phase.current_a, @fuse_a) == :critical}
+              id={"fuse-warning-#{i}"}
+              role="alert"
+              class="flex gap-2 rounded-xl border border-error/40 bg-error/10 p-3 text-sm"
+            >
+              <.icon name="hero-bolt" class="mt-0.5 size-4 shrink-0 text-error" />
+              L{i} draws {phase.current_a} A of its {@fuse_a} A fuse. Switch something off on this phase to keep the fuse from tripping.
+            </p>
             <ul class="grid grid-cols-3 gap-3">
               <li
                 :for={{phase, i} <- Enum.with_index(@live.phases, 1)}
+                id={"phase-#{i}"}
                 class="rounded-xl border border-base-300 p-3"
               >
                 <p class="text-xs text-base-content/60">L{i}</p>
                 <p class="text-lg font-medium tabular-nums">{phase.power_w} W</p>
-                <p class="text-xs tabular-nums text-base-content/60">{phase.current_a} A</p>
+                <p class="text-xs tabular-nums text-base-content/60">
+                  {phase.current_a} A<span :if={@fuse_a}> of {@fuse_a} A</span>
+                </p>
+                <div
+                  :if={@fuse_a}
+                  class="mt-2 h-1.5 overflow-hidden rounded-full bg-base-300"
+                  role="meter"
+                  aria-label={"L#{i} load"}
+                  aria-valuemin="0"
+                  aria-valuemax={@fuse_a}
+                  aria-valuenow={phase.current_a}
+                >
+                  <div
+                    class={[
+                      "h-full rounded-full transition-[width] duration-500",
+                      case load_level(phase.current_a, @fuse_a) do
+                        :critical -> "bg-error"
+                        :high -> "bg-warning"
+                        :normal -> "bg-primary"
+                      end
+                    ]}
+                    style={"width: #{min(phase.current_a / @fuse_a * 100, 100)}%"}
+                  />
+                </div>
               </li>
             </ul>
           </div>
@@ -192,6 +226,16 @@ defmodule MijnverbruikWeb.DashboardLive do
     </Layouts.app>
     """
   end
+
+  # Fraction of the main fuse a phase may draw before it shows as high or
+  # critical. Fuses trip on sustained overload, so these are early warnings.
+  @load_high 0.8
+  @load_critical 0.95
+
+  defp load_level(_current, nil), do: nil
+  defp load_level(current, fuse) when current >= fuse * @load_critical, do: :critical
+  defp load_level(current, fuse) when current >= fuse * @load_high, do: :high
+  defp load_level(_current, _fuse), do: :normal
 
   defp warning_text({:standby_high, last_night, usual}) do
     "Standby power was #{last_night} W last night, against #{round(usual)} W usually. Something may have been left on."

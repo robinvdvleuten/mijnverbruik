@@ -33,4 +33,11 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
     refute has_element?(view, "#tariffs-#{tariff.id}")
     assert Tariffs.list_tariffs() == []
   end
+
+  test "saves the main fuse", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    view |> form("#settings-form", setting: %{main_fuse_a: "35"}) |> render_submit()
+    assert Mijnverbruik.Settings.get().main_fuse_a == 35
+  end
 end
