@@ -1,4 +1,4 @@
-# Same versions as the Dockerfile; CI installs these through jdx/mise-action.
+# Same versions as the Dockerfile; CI installs these through erlef/setup-beam.
 [tools]
 elixir = '1.18.2-otp-27'
 erlang = '27.0'

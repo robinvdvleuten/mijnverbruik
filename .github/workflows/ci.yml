@@ -18,17 +18,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
-        id: mise
-      - run: mix do local.hex --force, local.rebar --force
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          version-file: mise.toml
+          version-type: strict
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: cache-elixir
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ steps.mise.outputs.elixir }}-${{ steps.mise.outputs.erlang }}-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-${{ steps.mise.outputs.elixir }}-${{ steps.mise.outputs.erlang }}-
+          key: ${{ runner.os }}-mix-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
       - run: mix do deps.get --check-locked, deps.compile
         if: steps.cache-elixir.outputs.cache-hit != 'true'
       - run: mix format --check-formatted
