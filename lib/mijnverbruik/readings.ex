@@ -134,27 +134,16 @@ defmodule Mijnverbruik.Readings do
     stop = if to, do: DateTime.to_unix(to), else: :infinity
     until = if to, do: DateTime.to_unix(to) + 3600, else: 9_999_999_999
 
+    # `hour_summaries` holds each hour's first and last register values,
+    # maintained by triggers on `readings`.
     sql = """
-    WITH buckets AS (
-      SELECT minute / 3600 * 3600 AS hour, equipment_id,
-             MIN(delivered_t1_wh) AS d1_start,
-             MAX(delivered_t1_wh) AS d1_end,
-             MIN(delivered_t2_wh) AS d2_start,
-             MAX(delivered_t2_wh) AS d2_end,
-             MIN(returned_t1_wh + returned_t2_wh) AS r_start,
-             MAX(returned_t1_wh + returned_t2_wh) AS r_end,
-             MIN(gas_l) AS g_start,
-             MAX(gas_l) AS g_end
-      FROM readings
-      WHERE minute >= ?1 AND minute < ?2
-      GROUP BY hour, equipment_id
-    )
     SELECT hour,
-           MAX(LEAD(d1_start, 1, d1_end) OVER w - d1_start, 0),
-           MAX(LEAD(d2_start, 1, d2_end) OVER w - d2_start, 0),
-           MAX(LEAD(r_start, 1, r_end) OVER w - r_start, 0),
-           MAX(LEAD(g_start, 1, g_end) OVER w - g_start, 0)
-    FROM buckets
+           MAX(LEAD(delivered_t1_wh_start, 1, delivered_t1_wh_end) OVER w - delivered_t1_wh_start, 0),
+           MAX(LEAD(delivered_t2_wh_start, 1, delivered_t2_wh_end) OVER w - delivered_t2_wh_start, 0),
+           MAX(LEAD(returned_wh_start, 1, returned_wh_end) OVER w - returned_wh_start, 0),
+           MAX(LEAD(gas_l_start, 1, gas_l_end) OVER w - gas_l_start, 0)
+    FROM hour_summaries
+    WHERE hour >= ?1 AND hour < ?2
     WINDOW w AS (PARTITION BY equipment_id ORDER BY hour)
     """
 

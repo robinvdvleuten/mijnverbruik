@@ -75,6 +75,18 @@ defmodule Mijnverbruik.ReadingsTest do
                Readings.hourly(DateTime.from_unix!(@hour))
     end
 
+    test "stays correct when readings arrive out of order or are deleted" do
+      insert(@hour + 1800, 1200, gas_l: 50)
+      insert(@hour, 1000, gas_l: 40)
+      insert(@hour + 900, 1100)
+      insert(@hour + 3600, 1500, gas_l: 70)
+
+      assert [%{delivered_wh: 500, gas_l: 30}, _] = Readings.hourly(DateTime.from_unix!(@hour))
+
+      Repo.delete_all(from r in Reading, where: r.minute == ^@hour)
+      assert [%{delivered_wh: 400, gas_l: 20}, _] = Readings.hourly(DateTime.from_unix!(@hour))
+    end
+
     test "sums gas deltas" do
       insert(@hour, 0, gas_l: 100)
       insert(@hour + 300, 0, gas_l: 130)
