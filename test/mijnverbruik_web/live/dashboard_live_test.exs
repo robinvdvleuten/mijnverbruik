@@ -46,4 +46,30 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
     send(view.pid, {:telegram, telegram})
     assert has_element?(view, "#fuse-warning-2")
   end
+
+  test "shows today's prices with a dynamic tariff", %{conn: conn} do
+    tz = "Europe/Amsterdam"
+    today = DateTime.now!(tz) |> DateTime.to_date()
+
+    {:ok, _} =
+      Mijnverbruik.Tariffs.create_tariff(%{
+        valid_from: today,
+        contract: "dynamic",
+        electricity_surcharge: "0.15",
+        electricity_return: "0.15",
+        gas: "1.40",
+        fixed_per_month: "0"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/")
+    refute has_element?(view, "#prices")
+
+    now = System.os_time(:second)
+    hour = now - rem(now, 3600)
+    Mijnverbruik.Repo.insert_all(Mijnverbruik.Prices.MarketPrice, [%{hour: hour, price: 0.10}])
+
+    {:ok, view, _html} = live(conn, ~p"/")
+    assert has_element?(view, "#prices")
+    assert view |> element("#price-now") |> render() =~ "€0.27"
+  end
 end

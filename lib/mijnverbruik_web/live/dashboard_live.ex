@@ -3,7 +3,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   import MijnverbruikWeb.{Charts, Format}
 
-  alias Mijnverbruik.{Insights, Meter, Readings, Settings}
+  alias Mijnverbruik.{Insights, Meter, Prices, Readings, Settings, Tariffs}
   alias Mijnverbruik.Meter.Trend
 
   @impl true
@@ -64,7 +64,8 @@ defmodule MijnverbruikWeb.DashboardLive do
       today: Readings.today(tz),
       gas_flow_l: Readings.gas_flow(),
       hours: hours,
-      insights: Insights.summary(tz)
+      insights: Insights.summary(tz),
+      prices: prices(tz, now)
     )
   end
 
@@ -214,6 +215,25 @@ defmodule MijnverbruikWeb.DashboardLive do
         </div>
       </section>
 
+      <section :if={@prices} id="prices-section" class="mt-10">
+        <p :if={@prices.now} class="text-sm">
+          Electricity now costs
+          <span id="price-now" class="font-medium tabular-nums">
+            {euro(Enum.at(@prices.bars, @prices.now).price)}/kWh
+          </span>
+          <span :if={@prices.cheapest} class="text-base-content/60">
+            · cheapest {@prices.cheapest.label} at {euro(@prices.cheapest.price)}/kWh
+          </span>
+        </p>
+        <.bars
+          id="prices"
+          title="Electricity price · today and tomorrow"
+          unit={:eur_kwh}
+          bars={@prices.bars}
+          highlight={@prices.now}
+        />
+      </section>
+
       <.bars id="hours" title="Electricity · last 24 hours" unit={:kwh} bars={electricity(@hours)} />
       <.bars id="hours-gas" title="Gas · last 24 hours" unit={:m3} bars={gas(@hours)} />
       <.link
@@ -243,6 +263,41 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   defp warning_text({:gas_at_night, litres}) do
     "Gas flowed steadily between 01:00 and 05:00 last night (#{litres} litres). If your heating and hot water were off, check for a gas leak."
+  end
+
+  # All-in hourly electricity prices for today and tomorrow (once published)
+  # when today's tariff is dynamic, as chart bars with the current hour's index.
+  defp prices(tz, now) do
+    today = tz |> DateTime.now!() |> DateTime.to_date()
+
+    with %{contract: :dynamic} = tariff <- Tariffs.valid_on(Tariffs.list_tariffs(), today),
+         start = today |> DateTime.new!(~T[00:00:00], tz) |> DateTime.to_unix(),
+         stop = today |> Date.add(2) |> DateTime.new!(~T[00:00:00], tz) |> DateTime.to_unix(),
+         market when map_size(market) > 0 <- Prices.between(start, stop) do
+      bars =
+        for {hour, price} <- Enum.sort(market) do
+          local = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz)
+          all_in = Tariffs.kwh_price(tariff, price)
+          day = if DateTime.to_date(local) == today, do: "today", else: "tomorrow"
+
+          %{
+            hour: hour,
+            label: "#{day} #{Calendar.strftime(local, "%H:00")}",
+            up: max(all_in, 0),
+            down: max(-all_in, 0),
+            price: all_in
+          }
+        end
+
+      %{
+        bars: bars,
+        now: Enum.find_index(bars, &(&1.hour <= now and now < &1.hour + 3600)),
+        cheapest:
+          Enum.min_by(Enum.filter(bars, &(&1.hour + 3600 > now)), & &1.price, fn -> nil end)
+      }
+    else
+      _ -> nil
+    end
   end
 
   defp electricity(usage),

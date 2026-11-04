@@ -30,3 +30,7 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Never fetch market prices over the network in tests.
+config :mijnverbruik, fetch_prices: false
+config :mijnverbruik, prices_req_options: [plug: {Req.Test, Mijnverbruik.Prices}, retry: false]

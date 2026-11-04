@@ -17,6 +17,7 @@ defmodule Mijnverbruik.Application do
         {Phoenix.PubSub, name: Mijnverbruik.PubSub}
       ] ++
         meter_children() ++
+        price_children() ++
         [
           # Start to serve requests, typically the last entry
           MijnverbruikWeb.Endpoint
@@ -52,6 +53,13 @@ defmodule Mijnverbruik.Application do
           {Mijnverbruik.Meter.Reader, host: host, port: meter[:port]}
         ]
     end
+  end
+
+  # Market prices are fetched over the network, so tests leave this off.
+  defp price_children do
+    if Application.get_env(:mijnverbruik, :fetch_prices, true),
+      do: [Mijnverbruik.Prices.Fetcher],
+      else: []
   end
 
   defp skip_migrations?() do

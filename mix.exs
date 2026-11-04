@@ -71,7 +71,8 @@ defmodule Mijnverbruik.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:dsmr, "~> 1.1.1"},
-      {:tz, "~> 0.28"}
+      {:tz, "~> 0.28"},
+      {:req, "~> 0.7.5"}
     ]
   end
 

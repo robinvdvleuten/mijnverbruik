@@ -3,7 +3,7 @@ defmodule Mijnverbruik.Insights do
   Standby power and warnings about unusual use, derived from the hourly usage
   of recent nights (00:00–06:00 local time), when nearly everything is off.
   """
-  alias Mijnverbruik.{Readings, Tariffs}
+  alias Mijnverbruik.{Prices, Readings, Tariffs}
 
   @nights 7
   @night_hours 0..5
@@ -20,7 +20,8 @@ defmodule Mijnverbruik.Insights do
     * `:standby_w` - the lowest hourly average power over the last 7 nights,
       or nil without data
     * `:standby_cost_year` - what that power costs per year at the average of
-      today's low and normal tariff, or nil without a tariff
+      today's low and normal tariff, or for a dynamic contract at the last
+      30 days' average market price; nil without a tariff or prices
     * `:warnings` - a list of `{:standby_high, last_night_w, usual_w}` and
       `{:gas_at_night, litres}`
   """
@@ -98,20 +99,14 @@ defmodule Mijnverbruik.Insights do
 
   defp yearly_cost(watts, tz, now) do
     today = now |> DateTime.shift_zone!(tz) |> DateTime.to_date()
+    unix = DateTime.to_unix(now)
 
-    case Tariffs.valid_on(Tariffs.list_tariffs(), today) do
-      nil ->
-        nil
-
-      tariff ->
-        kwh = watts * 8760 / 1000
-
-        Tariffs.energy_cost(tariff, %{
-          delivered_t1_wh: kwh * 500,
-          delivered_t2_wh: kwh * 500,
-          returned_wh: 0,
-          gas_l: 0
-        })
+    with %{} = tariff <- Tariffs.valid_on(Tariffs.list_tariffs(), today),
+         market = tariff.contract == :dynamic && Prices.average(unix - 30 * 86_400, unix),
+         true <- market != nil do
+      watts * 8760 / 1000 * Tariffs.kwh_price(tariff, market || nil)
+    else
+      _ -> nil
     end
   end
 end

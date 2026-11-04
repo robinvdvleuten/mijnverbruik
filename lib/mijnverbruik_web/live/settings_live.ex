@@ -44,7 +44,8 @@ defmodule MijnverbruikWeb.SettingsLive do
       end
 
     case result do
-      {:ok, _tariff} ->
+      {:ok, tariff} ->
+        if tariff.contract == :dynamic, do: Mijnverbruik.Prices.Fetcher.refresh()
         {:noreply, socket |> put_flash(:info, "Tariff saved") |> reload()}
 
       {:error, changeset} ->
@@ -83,6 +84,22 @@ defmodule MijnverbruikWeb.SettingsLive do
     |> stream(:tariffs, tariffs, reset: true)
     |> edit(new_tariff(tariffs))
   end
+
+  defp dynamic?(form), do: to_string(form[:contract].value) == "dynamic"
+
+  defp tariff_summary(%Tariff{contract: :dynamic} = t) do
+    "Dynamic · market + €#{price(t.electricity_surcharge)} per kWh · return market + €#{price(t.electricity_return)} · " <>
+      common_summary(t)
+  end
+
+  defp tariff_summary(%Tariff{} = t) do
+    "Normal €#{price(t.electricity_normal)} · Low €#{price(t.electricity_low)} · Return €#{price(t.electricity_return)} per kWh · " <>
+      common_summary(t)
+  end
+
+  defp common_summary(t),
+    do:
+      "Gas €#{price(t.gas)} per m³ · Fixed #{euro(Decimal.to_float(t.fixed_per_month))} per month"
 
   @impl true
   def render(assigns) do
@@ -144,11 +161,7 @@ defmodule MijnverbruikWeb.SettingsLive do
                 From {Calendar.strftime(tariff.valid_from, "%-d %b %Y")}
               </p>
               <p class="text-xs tabular-nums text-base-content/60">
-                Normal €{price(tariff.electricity_normal)} · Low €{price(tariff.electricity_low)} · Return €{price(
-                  tariff.electricity_return
-                )} per kWh · Gas €{price(tariff.gas)} per m³ · Fixed {euro(
-                  Decimal.to_float(tariff.fixed_per_month)
-                )} per month
+                {tariff_summary(tariff)}
               </p>
             </div>
             <div class="flex shrink-0 gap-1">
@@ -186,25 +199,49 @@ defmodule MijnverbruikWeb.SettingsLive do
             {if @tariff.id, do: "Edit tariff", else: "Add tariff"}
           </h3>
           <.input field={@form[:valid_from]} type="date" label="Valid from" />
+          <.input
+            field={@form[:contract]}
+            type="select"
+            label="Contract"
+            options={[{"Fixed prices", "fixed"}, {"Dynamic (hourly market prices)", "dynamic"}]}
+          />
           <div class="grid gap-x-4 sm:grid-cols-2">
-            <.input
-              field={@form[:electricity_normal]}
-              type="number"
-              step="0.00001"
-              label="Electricity, normal tariff (€/kWh)"
-            />
-            <.input
-              field={@form[:electricity_low]}
-              type="number"
-              step="0.00001"
-              label="Electricity, low tariff (€/kWh)"
-            />
-            <.input
-              field={@form[:electricity_return]}
-              type="number"
-              step="0.00001"
-              label="Return compensation (€/kWh)"
-            />
+            <%= if dynamic?(@form) do %>
+              <.input
+                field={@form[:electricity_surcharge]}
+                type="number"
+                step="0.00001"
+                label="Electricity, on top of market price (€/kWh)"
+              />
+              <.input
+                field={@form[:electricity_return]}
+                type="number"
+                step="0.00001"
+                label="Return, on top of market price (€/kWh)"
+              />
+              <p class="-mt-1 mb-3 text-xs text-base-content/60 sm:col-span-2">
+                Costs use EnergyZero's hourly market price plus 21% VAT plus these amounts. For usage, add energy tax and your supplier's markup, both including VAT. Until net metering ends in 2027, returned kWh usually earn the same: use the same amount for return.
+              </p>
+            <% else %>
+              <.input
+                field={@form[:electricity_normal]}
+                type="number"
+                step="0.00001"
+                label="Electricity, normal tariff (€/kWh)"
+              />
+              <.input
+                field={@form[:electricity_low]}
+                type="number"
+                step="0.00001"
+                label="Electricity, low tariff (€/kWh)"
+              />
+              <.input
+                field={@form[:electricity_return]}
+                type="number"
+                step="0.00001"
+                label="Return compensation (€/kWh)"
+              />
+            <% end %>
             <.input field={@form[:gas]} type="number" step="0.00001" label="Gas (€/m³)" />
           </div>
           <.input

@@ -40,4 +40,27 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
     view |> form("#settings-form", setting: %{main_fuse_a: "35"}) |> render_submit()
     assert Mijnverbruik.Settings.get().main_fuse_a == 35
   end
+
+  test "adds a dynamic tariff with only the fields it needs", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    html = view |> form("#tariff-form", tariff: %{"contract" => "dynamic"}) |> render_change()
+    assert html =~ "on top of market price"
+    refute has_element?(view, "#tariff_electricity_low")
+
+    view
+    |> form("#tariff-form",
+      tariff: %{
+        "contract" => "dynamic",
+        "valid_from" => "2026-01-01",
+        "electricity_surcharge" => "0.15",
+        "electricity_return" => "0.15",
+        "gas" => "1.40",
+        "fixed_per_month" => "30"
+      }
+    )
+    |> render_submit()
+
+    assert [%{contract: :dynamic, electricity_low: nil}] = Tariffs.list_tariffs()
+  end
 end

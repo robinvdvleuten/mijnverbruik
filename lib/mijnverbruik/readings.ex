@@ -9,7 +9,7 @@ defmodule Mijnverbruik.Readings do
   """
 
   alias Mijnverbruik.Readings.Reading
-  alias Mijnverbruik.{Repo, Tariffs}
+  alias Mijnverbruik.{Prices, Repo, Tariffs}
 
   @topic "readings"
 
@@ -175,8 +175,9 @@ defmodule Mijnverbruik.Readings do
   data and hours still to come (23 or 25 hours when the clocks change).
 
   `:cost` is the hour's energy cost plus its share of the fixed costs, using
-  the tariff valid on `date`. It is nil when no tariff applies or the hour has
-  not started; the current hour gets the fixed costs elapsed so far.
+  the tariff valid on `date`. It is nil when no tariff applies, the hour has
+  not started, or a dynamic tariff lacks the hour's market price; the current
+  hour gets the fixed costs elapsed so far.
   """
   def hours(%Date{} = date, tz \\ timezone()) do
     calendar_hours(date, Date.add(date, 1), tz)
@@ -227,6 +228,7 @@ defmodule Mijnverbruik.Readings do
     start = start - rem(start, 3600)
     now = System.os_time(:second)
     tariffs = Tariffs.list_tariffs()
+    prices = Prices.between(start, stop)
 
     by_hour =
       start
@@ -237,17 +239,21 @@ defmodule Mijnverbruik.Readings do
     for hour <- start..(stop - 3600)//3600 do
       date = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> DateTime.to_date()
       usage = Map.get_lazy(by_hour, hour, fn -> [] |> total() |> Map.put(:hour, hour) end)
-      cost = hour_cost(Tariffs.valid_on(tariffs, date), usage, now - hour)
+      cost = hour_cost(Tariffs.valid_on(tariffs, date), usage, prices[hour], now - hour)
       Map.merge(usage, %{date: date, cost: cost})
     end
   end
 
-  defp hour_cost(nil, _usage, _elapsed), do: nil
-  defp hour_cost(_tariff, _usage, elapsed) when elapsed < 0, do: nil
+  defp hour_cost(nil, _usage, _market, _elapsed), do: nil
+  defp hour_cost(_tariff, _usage, _market, elapsed) when elapsed < 0, do: nil
 
-  defp hour_cost(tariff, usage, elapsed) do
-    Tariffs.energy_cost(tariff, usage) +
-      Tariffs.fixed_per_day(tariff) / 24 * min(elapsed, 3600) / 3600
+  # A dynamic tariff without the hour's market price has no energy cost yet;
+  # leave the whole hour out rather than show fixed costs only.
+  defp hour_cost(tariff, usage, market, elapsed) do
+    case Tariffs.energy_cost(tariff, usage, market) do
+      nil -> nil
+      energy -> energy + Tariffs.fixed_per_day(tariff) / 24 * min(elapsed, 3600) / 3600
+    end
   end
 
   defp local_today(tz), do: tz |> DateTime.now!() |> DateTime.to_date()
