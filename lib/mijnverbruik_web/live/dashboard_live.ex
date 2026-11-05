@@ -50,20 +50,40 @@ defmodule MijnverbruikWeb.DashboardLive do
   defp assign_usage(socket) do
     tz = Application.fetch_env!(:mijnverbruik, :timezone)
     now = System.os_time(:second)
-    first_hour = now - rem(now, 3600) - 23 * 3600
-    by_hour = first_hour |> DateTime.from_unix!() |> Readings.hourly() |> Map.new(&{&1.hour, &1})
+    first = now - rem(now, 3600) - 23 * 3600
+    from = DateTime.from_unix!(first)
+    by_hour = from |> Readings.hourly() |> Map.new(&{&1.hour, &1})
 
     hours =
-      for hour <- first_hour..(first_hour + 23 * 3600)//3600 do
-        usage = Map.get(by_hour, hour, %{delivered_wh: 0, returned_wh: 0, gas_l: 0})
-        local = hour |> DateTime.from_unix!() |> DateTime.shift_zone!(tz)
-        Map.put(usage, :label, Calendar.strftime(local, "%H:00"))
+      for hour <- first..(first + 23 * 3600)//3600 do
+        usage = Map.get(by_hour, hour, %{gas_l: 0})
+        Map.put(usage, :label, local_time(hour, tz, "%H:00"))
+      end
+
+    # The running 5 minutes are left out: as an average power they would read
+    # too low until complete.
+    by_minute =
+      from
+      |> Readings.five_minutes(DateTime.from_unix!(now - rem(now, 300)))
+      |> Map.new(&{&1.minute, &1})
+
+    # Wh over 5 minutes, times 12, is the average power in W.
+    power =
+      for minute <- first..(first + 24 * 3600 - 300)//300 do
+        usage = by_minute[minute]
+
+        %{
+          label: local_time(minute, tz, "%H:%M"),
+          up: usage && usage.delivered_wh * 12,
+          down: usage && usage.returned_wh * 12
+        }
       end
 
     assign(socket,
       today: Readings.today(tz),
       gas_flow_l: Readings.gas_flow(),
       hours: hours,
+      power: power,
       insights: Insights.summary(tz),
       prices: prices(tz, now),
       gas_price: gas_price(tz, now)
@@ -248,7 +268,11 @@ defmodule MijnverbruikWeb.DashboardLive do
         />
       </section>
 
-      <.bars id="hours" title="Electricity · last 24 hours" unit={:kwh} bars={electricity(@hours)} />
+      <.power
+        id="recent"
+        title="Electricity · last 24 hours, average per 5 minutes"
+        points={@power}
+      />
       <.bars id="hours-gas" title="Gas · last 24 hours" unit={:m3} bars={gas(@hours)} />
       <.link
         navigate={~p"/history"}
@@ -327,10 +351,11 @@ defmodule MijnverbruikWeb.DashboardLive do
     end
   end
 
-  defp electricity(usage),
-    do: Enum.map(usage, &%{label: &1.label, up: &1.delivered_wh, down: &1.returned_wh})
-
   defp gas(usage), do: Enum.map(usage, &%{label: &1.label, up: &1.gas_l})
+
+  defp local_time(unix, tz, format) do
+    unix |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> Calendar.strftime(format)
+  end
 
   # Telegrams arrive every second; 10 seconds without one means the values on
   # screen no longer describe now.

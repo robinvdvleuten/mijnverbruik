@@ -150,13 +150,57 @@ defmodule Mijnverbruik.Readings do
     %{rows: rows} = Repo.query!(sql, [DateTime.to_unix(from), until])
 
     rows
-    |> Enum.map(fn [hour, d1, d2, r, g] ->
-      %{hour: hour, delivered_t1_wh: d1, delivered_t2_wh: d2, returned_wh: r, gas_l: g || 0}
+    |> Enum.filter(fn [hour | _] -> hour < stop end)
+    |> usage_per(:hour)
+  end
+
+  @doc """
+  Usage per 5 minutes from `from` (inclusive) until `to` (exclusive). Returns
+  maps sorted by `:minute` (the period's start, unix seconds) with the same
+  usage fields as `hourly/2`.
+
+  Each period runs to the first reading of the next one. Unlike `hourly/2`,
+  energy used during a gap in the readings is left out: over a few minutes it
+  would show as a peak that never happened.
+  """
+  def five_minutes(%DateTime{} = from, %DateTime{} = to) do
+    sql = """
+    WITH periods AS (
+      SELECT minute - minute % 300 AS period,
+             equipment_id,
+             MIN(delivered_t1_wh) AS d1, MAX(delivered_t1_wh) AS d1_end,
+             MIN(delivered_t2_wh) AS d2, MAX(delivered_t2_wh) AS d2_end,
+             MIN(returned_t1_wh + returned_t2_wh) AS r, MAX(returned_t1_wh + returned_t2_wh) AS r_end,
+             MIN(gas_l) AS g, MAX(gas_l) AS g_end
+      FROM readings
+      WHERE minute >= ?1 AND minute < ?2
+      GROUP BY period, equipment_id
+    )
+    SELECT p.period,
+           MAX(COALESCE(n.d1, p.d1_end) - p.d1, 0),
+           MAX(COALESCE(n.d2, p.d2_end) - p.d2, 0),
+           MAX(COALESCE(n.r, p.r_end) - p.r, 0),
+           MAX(COALESCE(n.g, p.g_end) - p.g, 0)
+    FROM periods p
+    LEFT JOIN periods n ON n.period = p.period + 300 AND n.equipment_id = p.equipment_id
+    WHERE p.period < ?3
+    """
+
+    # The period at `to` is read too, since the last period ends at its first reading.
+    stop = DateTime.to_unix(to)
+    %{rows: rows} = Repo.query!(sql, [DateTime.to_unix(from), stop + 300, stop])
+
+    usage_per(rows, :minute)
+  end
+
+  # Readings of two meters can share a period, after a meter was replaced.
+  defp usage_per(rows, key) do
+    rows
+    |> Enum.group_by(&hd/1, fn [_period, d1, d2, r, g] ->
+      %{delivered_t1_wh: d1, delivered_t2_wh: d2, returned_wh: r, gas_l: g || 0}
     end)
-    |> Enum.filter(&(&1.hour < stop))
-    |> Enum.group_by(& &1.hour)
-    |> Enum.map(fn {hour, parts} -> parts |> total() |> Map.put(:hour, hour) end)
-    |> Enum.sort_by(& &1.hour)
+    |> Enum.map(fn {period, parts} -> parts |> total() |> Map.put(key, period) end)
+    |> Enum.sort_by(& &1[key])
   end
 
   @doc """

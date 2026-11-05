@@ -7,7 +7,7 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
   test "shows live power once a telegram arrives", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/")
     assert html =~ "Waiting for the meter"
-    assert has_element?(view, "#hours")
+    assert has_element?(view, "#recent")
     assert has_element?(view, "#hours-gas")
 
     {:ok, telegram} = DSMR.parse(raw_telegram())
@@ -17,6 +17,38 @@ defmodule MijnverbruikWeb.DashboardLiveTest do
     assert has_element?(view, "#trend path")
     refute has_element?(view, "#meter-status")
   end
+
+  test "charts electricity per 5 minutes and gas per hour", %{conn: conn} do
+    now = System.os_time(:second)
+    minute = now - rem(now, 300) - 600
+
+    for {at, wh, gas} <- [{minute, 1000, 500}, {minute + 300, 1100, 525}] do
+      Mijnverbruik.Repo.insert!(%Mijnverbruik.Readings.Reading{
+        minute: at,
+        equipment_id: "E1",
+        delivered_t1_wh: wh,
+        delivered_t2_wh: 0,
+        returned_t1_wh: 0,
+        returned_t2_wh: 0,
+        gas_l: gas
+      })
+    end
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    label =
+      minute
+      |> DateTime.from_unix!()
+      |> DateTime.shift_zone!("Europe/Amsterdam")
+      |> Calendar.strftime("%H:%M")
+
+    assert has_element?(view, ~s(#recent-chart [data-bar="#{label}: 1200 W"]))
+    assert view |> element("#recent-chart") |> render() |> count_bars() == 288
+    assert view |> element("#hours-gas-chart") |> render() |> count_bars() == 24
+  end
+
+  defp count_bars(html),
+    do: html |> LazyHTML.from_fragment() |> LazyHTML.query("[data-bar]") |> Enum.count()
 
   test "marks live values stale when telegrams stop or the meter goes offline", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")

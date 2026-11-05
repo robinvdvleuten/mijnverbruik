@@ -49,6 +49,50 @@ defmodule Mijnverbruik.ReadingsTest do
     end
   end
 
+  describe "five_minutes/2" do
+    defp five_minutes(from, to),
+      do: Readings.five_minutes(DateTime.from_unix!(from), DateTime.from_unix!(to))
+
+    test "runs each period to the first reading of the next" do
+      insert(@hour, 1000, gas_l: 10)
+      insert(@hour + 120, 1020, gas_l: 10)
+      insert(@hour + 300, 1050, gas_l: 15)
+      insert(@hour + 360, 1060, gas_l: 15)
+
+      assert [
+               %{minute: @hour, delivered_wh: 50, gas_l: 5},
+               %{minute: minute, delivered_wh: 10, gas_l: 0}
+             ] = five_minutes(@hour, @hour + 600)
+
+      assert minute == @hour + 300
+    end
+
+    test "leaves out energy used during a gap" do
+      insert(@hour, 1000)
+      insert(@hour + 60, 1010)
+      insert(@hour + 3600, 9000)
+      insert(@hour + 3660, 9010)
+
+      assert [%{delivered_wh: 10}, %{delivered_wh: 10}] = five_minutes(@hour, @hour + 3900)
+    end
+
+    test "stops before `to` but ends the last period at its next reading" do
+      insert(@hour, 1000)
+      insert(@hour + 300, 1100)
+      insert(@hour + 600, 1300)
+
+      assert [%{minute: @hour, delivered_wh: 100}] = five_minutes(@hour, @hour + 300)
+    end
+
+    test "does not take deltas across a replaced meter" do
+      insert(@hour, 5000, equipment_id: "OLD")
+      insert(@hour + 300, 10, equipment_id: "NEW")
+      insert(@hour + 360, 20, equipment_id: "NEW")
+
+      assert [%{delivered_wh: 0}, %{delivered_wh: 10}] = five_minutes(@hour, @hour + 600)
+    end
+  end
+
   describe "hourly/1" do
     test "attributes energy used during a gap to the hour before it" do
       insert(@hour, 1000)
