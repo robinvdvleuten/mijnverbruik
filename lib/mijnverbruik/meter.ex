@@ -37,6 +37,53 @@ defmodule Mijnverbruik.Meter do
     }
   end
 
+  @doc """
+  What a telegram tells about the meter: its `:make` (nil when unknown), the
+  DSMR `:version` as an integer such as 50 (nil when missing), the number of
+  `:phases`, and how often a `:gas` meter reports: `:five_minutes` (DSMR 5),
+  `:hourly` (older) or nil without one.
+  """
+  def info(%DSMR.Telegram{} = t) do
+    version =
+      case Integer.parse(t.version || "") do
+        {n, _} -> n
+        :error -> nil
+      end
+
+    gas? = Enum.any?(t.mbus_devices, &(&1.device_type == "003"))
+
+    %{
+      make: make(t.header),
+      version: version,
+      phases: length(live(t).phases),
+      gas:
+        cond do
+          not gas? -> nil
+          version && version >= 50 -> :five_minutes
+          true -> :hourly
+        end
+    }
+  end
+
+  # The header starts with the maker's three-letter flag code.
+  @makes %{
+    "ISK" => "Iskra",
+    "KFM" => "Kaifa",
+    "KMP" => "Kamstrup",
+    "XMX" => "Xemex",
+    "LGB" => "Landis+Gyr",
+    "LGF" => "Landis+Gyr",
+    "ENE" => "Sagemcom",
+    "SAG" => "Sagemcom"
+  }
+
+  defp make(header) when is_binary(header) do
+    header = String.trim_leading(header, "/")
+    Map.get(@makes, header |> String.slice(0, 3) |> String.upcase(), header)
+  end
+
+  defp make(_header), do: nil
+
   defp watts(m), do: round(value(m) * 1000)
 
   defp value(%DSMR.Measurement{value: v}) when is_number(v), do: v

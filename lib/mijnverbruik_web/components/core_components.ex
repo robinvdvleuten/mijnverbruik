@@ -1,30 +1,7 @@
 defmodule MijnverbruikWeb.CoreComponents do
   @moduledoc """
-  Provides core UI components.
-
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
-
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
-
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
-
-    * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
-      we build on. You will use it for layout, sizing, flexbox, grid, and
-      spacing.
-
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
-
-    * [Phoenix.Component](https://phoenix-live-view.hexdocs.pm/Phoenix.Component.html) -
-      the component system used by Phoenix. Some components, such as `<.link>`
-      and `<.form>`, are defined there.
-
+  Core UI building blocks: flash notices, buttons, form inputs and icons,
+  styled with the design tokens in `assets/css/app.css`.
   """
   use Phoenix.Component
 
@@ -36,14 +13,7 @@ defmodule MijnverbruikWeb.CoreComponents do
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash
-        id="welcome-back"
-        kind={:info}
-        phx-mounted={show("#welcome-back") |> JS.remove_attribute("hidden")}
-        hidden
-      >
-        Welcome Back!
-      </.flash>
+      <.flash kind={:info} phx-mounted={show("#flash")}>Welkom terug!</.flash>
   """
   attr :id, :string, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
@@ -62,23 +32,20 @@ defmodule MijnverbruikWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed right-4 top-20 z-50 w-[calc(100%-2rem)] max-w-sm cursor-pointer sm:top-24"
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+      <div class="flex items-start gap-3 rounded-[20px] border border-tile-line bg-tile p-4 text-sm shadow-float backdrop-blur-xl">
+        <span class={[
+          "mt-1.5 size-2.5 shrink-0 rounded-full",
+          if(@kind == :error, do: "bg-danger", else: "bg-return")
+        ]} />
+        <div class="min-w-0 flex-1">
+          <p :if={@title} class="font-bold">{@title}</p>
+          <p class="text-muted">{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label="close">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button type="button" class="group shrink-0" aria-label="Sluiten">
+          <.icon name="hero-x-mark" class="size-5 text-subtle group-hover:text-ink" />
         </button>
       </div>
     </div>
@@ -86,26 +53,176 @@ defmodule MijnverbruikWeb.CoreComponents do
   end
 
   @doc """
-  Renders a button with navigation support.
+  A frosted card, the surface most content sits on.
 
   ## Examples
 
-      <.button>Send!</.button>
-      <.button phx-click="go" variant="primary">Send!</.button>
-      <.button navigate={~p"/"}>Home</.button>
+      <.card id="gas">
+        <:title>Gas</:title>
+        <:aside>per uur</:aside>
+        …
+      </.card>
+  """
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :title, doc: "a heading at the top left"
+  slot :aside, doc: "a short note at the top right, in mono"
+  slot :inner_block
+
+  def card(assigns) do
+    ~H"""
+    <section
+      id={@id}
+      class={[
+        "surface flex flex-col gap-2.5 px-5 py-[18px] sm:px-[22px] sm:py-5",
+        @class
+      ]}
+      {@rest}
+    >
+      <header :if={@title != [] or @aside != []} class="flex items-baseline justify-between gap-2.5">
+        <h2 class="text-[17px] font-bold tracking-[-0.01em]">{render_slot(@title)}</h2>
+        <span :if={@aside != []} class="whitespace-nowrap font-mono text-[11px] text-subtle">
+          {render_slot(@aside)}
+        </span>
+      </header>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
+
+  @doc """
+  A big number with a small unit after it.
+
+  ## Examples
+
+      <.figure value="2,14" unit="kWh" />
+  """
+  attr :value, :string, required: true
+  attr :unit, :string, default: nil
+  attr :size, :string, default: "text-[30px]", doc: "the number's text size class"
+
+  def figure(assigns) do
+    ~H"""
+    <p class="flex items-baseline gap-1.5">
+      <span class={["font-bold leading-none tracking-[-0.035em]", @size]}>{@value}</span>
+      <span :if={@unit} class="text-xs font-semibold text-muted">{@unit}</span>
+    </p>
+    """
+  end
+
+  @doc """
+  One total in a row of tiles: a coloured dot and label, a big number with
+  its unit, and optionally a note under it. Without a value, the inner block
+  takes its place, e.g. a link to set something up.
+
+  ## Examples
+
+      <.stat id="today-gas" dot="bg-gas" label="Gas" value="0,58" unit="m³" />
+  """
+  attr :id, :string, required: true
+  attr :dot, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, default: nil
+  attr :unit, :string, default: nil
+  slot :inner_block
+  slot :note, doc: "a line under the value"
+
+  def stat(assigns) do
+    ~H"""
+    <div id={@id} class="surface flex flex-col gap-1.5 px-5 py-[18px]">
+      <dt class="flex items-center gap-[7px] text-[13px] text-muted">
+        <.dot class={@dot} />{@label}
+      </dt>
+      <dd class="flex items-baseline gap-1.5">
+        <%= if @value do %>
+          <span class="text-2xl font-bold leading-none tracking-[-0.035em] md:text-[32px]">{@value}</span>
+          <span :if={@unit} class="text-[11px] font-semibold text-muted md:text-xs">{@unit}</span>
+        <% else %>
+          {render_slot(@inner_block)}
+        <% end %>
+      </dd>
+      <dd :for={note <- @note}>{render_slot(note)}</dd>
+    </div>
+    """
+  end
+
+  @doc """
+  A small coloured dot that ties a value to its colour in charts.
+  """
+  attr :class, :any, required: true
+
+  def dot(assigns) do
+    ~H"""
+    <span class={["size-2 shrink-0 rounded-full", @class]} aria-hidden="true" />
+    """
+  end
+
+  @doc """
+  A warning across the page, for something that needs attention.
+
+  ## Examples
+
+      <.banner id="offline" title="Meter niet bereikbaar">Laatste meting om 08:09.</.banner>
+  """
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :tone, :atom, values: [:warn, :danger], default: :warn
+  slot :inner_block, required: true
+
+  def banner(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      role="alert"
+      class={[
+        "flex flex-wrap items-center gap-x-3.5 gap-y-1 rounded-[18px] border px-5 py-3.5",
+        if(@tone == :danger,
+          do: "border-danger/50 bg-danger/12 text-ink",
+          else: "border-warn-line bg-warn-bg text-on-warn"
+        )
+      ]}
+    >
+      <p class="flex items-center gap-2.5 text-[15px] font-bold">
+        <span class={[
+          "size-2.5 shrink-0 rounded-full",
+          if(@tone == :danger, do: "bg-danger", else: "bg-warn")
+        ]} />
+        {@title}
+      </p>
+      <p class="min-w-0 flex-1 basis-60 text-sm text-pretty">{render_slot(@inner_block)}</p>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a pill button, or a link styled as one.
+
+  ## Examples
+
+      <.button>Annuleren</.button>
+      <.button phx-click="go" variant="primary">Opslaan</.button>
+      <.button navigate={~p"/"}>Terug</.button>
   """
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled type)
-  attr :class, :any
-  attr :variant, :string, values: ~w(primary)
+  attr :class, :any, default: nil
+  attr :variant, :string, values: [nil, "primary"], default: nil
+  attr :size, :string, values: ~w(md lg), default: "md", doc: "lg matches the height of inputs"
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
-
     assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
-      end)
+      assign(assigns,
+        class: [
+          "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-bold transition duration-200 active:scale-[.97] disabled:opacity-50 phx-submit-loading:opacity-70",
+          if(assigns.size == "lg", do: "h-12 px-6 text-[15px]", else: "px-5 py-2.5 text-sm"),
+          if(assigns.variant == "primary",
+            do: "bg-inverse text-on-inverse shadow-float hover:-translate-y-px",
+            else: "bg-track text-ink hover:bg-inverse/15"
+          ),
+          assigns.class
+        ]
+      )
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
@@ -137,34 +254,18 @@ defmodule MijnverbruikWeb.CoreComponents do
 
     * `type="checkbox"` is used exclusively to render boolean values
 
-    * For live file uploads, see `Phoenix.Component.live_file_input/1`
-
-  See https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
-  for more information. Unsupported types, such as radio, are best
-  written directly in your templates.
-
   ## Examples
 
   ```heex
   <.input field={@form[:email]} type="email" />
   <.input name="my-input" errors={["oh no!"]} />
+  <.input field={@form[:kind]} type="select" options={["Vast": "fixed"]} />
   ```
-
-  ## Select type
-
-  When using `type="select"`, you must pass the `options` and optionally
-  a `value` to mark which option should be preselected.
-
-  ```heex
-  <.input field={@form[:user_type]} type="select" options={["Admin": "admin", "User": "user"]} />
-  ```
-
-  For more information on what kind of data can be passed to `options` see
-  [`options_for_select`](https://phoenix-html.hexdocs.pm/Phoenix.HTML.Form.html#options_for_select/2).
   """
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :hint, :string, default: nil, doc: "a short explanation under the field"
   attr :value, :any
 
   attr :type, :string,
@@ -181,11 +282,10 @@ defmodule MijnverbruikWeb.CoreComponents do
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
   attr :class, :any, default: nil, doc: "the input class to use over defaults"
-  attr :error_class, :any, default: nil, doc: "the input error class to use over defaults"
 
   attr :rest, :global,
     include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
-                multiple pattern placeholder readonly required rows size step)
+                multiple pattern placeholder readonly required rows size step inputmode)
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
@@ -211,8 +311,8 @@ defmodule MijnverbruikWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
+    <div class="min-w-0">
+      <label for={@id} class="flex items-center gap-2 text-sm">
         <input
           type="hidden"
           name={@name}
@@ -220,17 +320,15 @@ defmodule MijnverbruikWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={@class || "size-4 rounded accent-(--ink)"}
+          {@rest}
+        />{@label}
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -239,13 +337,16 @@ defmodule MijnverbruikWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+    <div class="min-w-0">
+      <label for={@id} class="block">
+        <span :if={@label} class="mb-2 block text-[13px] font-semibold text-muted">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[
+            @class || field_class(@errors),
+            "appearance-none bg-(image:--chevron) bg-position-[right_1rem_center] bg-no-repeat pr-10"
+          ]}
           multiple={@multiple}
           {@rest}
         >
@@ -253,6 +354,7 @@ defmodule MijnverbruikWeb.CoreComponents do
           {Phoenix.HTML.Form.options_for_select(@options, @value)}
         </select>
       </label>
+      <p :if={@hint} class="mt-2 text-[13px] text-muted text-pretty">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -260,19 +362,12 @@ defmodule MijnverbruikWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <textarea
-          id={@id}
-          name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
-          {@rest}
-        >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+    <div class="min-w-0">
+      <label for={@id} class="block">
+        <span :if={@label} class="mb-2 block text-[13px] font-semibold text-muted">{@label}</span>
+        <textarea id={@id} name={@name} class={@class || field_class(@errors)} {@rest}>{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       </label>
+      <p :if={@hint} class="mt-2 text-[13px] text-muted text-pretty">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -281,146 +376,41 @@ defmodule MijnverbruikWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+    <div class="min-w-0">
+      <label for={@id} class="block">
+        <span :if={@label} class="mb-2 block text-[13px] font-semibold text-muted">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
+          class={@class || field_class(@errors)}
           {@rest}
         />
       </label>
+      <p :if={@hint} class="mt-2 text-[13px] text-muted text-pretty">{@hint}</p>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
   end
 
+  defp field_class(errors) do
+    [
+      "block h-12 w-full rounded-[14px] border bg-node px-4 text-base text-ink transition-[border-color,box-shadow] duration-200 placeholder:text-subtle focus:outline-none focus:ring-4",
+      if(errors == [],
+        do: "border-ink/16 focus:border-inverse/40 focus:ring-inverse/10",
+        else: "border-danger focus:ring-danger/15"
+      )
+    ]
+  end
+
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="mt-1.5 flex items-center gap-1.5 text-sm text-danger">
+      <.icon name="hero-exclamation-circle-mini" class="size-4" />
       {render_slot(@inner_block)}
     </p>
-    """
-  end
-
-  @doc """
-  Renders a header with title.
-  """
-  slot :inner_block, required: true
-  slot :subtitle
-  slot :actions
-
-  def header(assigns) do
-    ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
-      <div>
-        <h1 class="text-lg font-semibold leading-8">
-          {render_slot(@inner_block)}
-        </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
-          {render_slot(@subtitle)}
-        </p>
-      </div>
-      <div class="flex-none">{render_slot(@actions)}</div>
-    </header>
-    """
-  end
-
-  @doc """
-  Renders a table with generic styling.
-
-  ## Examples
-
-      <.table id="users" rows={@users}>
-        <:col :let={user} label="id">{user.id}</:col>
-        <:col :let={user} label="username">{user.username}</:col>
-      </.table>
-  """
-  attr :id, :string, required: true
-  attr :rows, :list, required: true
-  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
-
-  attr :row_item, :any,
-    default: &Function.identity/1,
-    doc: "the function for mapping each row before calling the :col and :action slots"
-
-  slot :col, required: true do
-    attr :label, :string
-  end
-
-  slot :action, doc: "the slot for showing user actions in the last table column"
-
-  def table(assigns) do
-    assigns =
-      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
-        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
-      end
-
-    ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">Actions</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
-          >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
-              <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    """
-  end
-
-  @doc """
-  Renders a data list.
-
-  ## Examples
-
-      <.list>
-        <:item title="Title">{@post.title}</:item>
-        <:item title="Views">{@post.views}</:item>
-      </.list>
-  """
-  slot :item, required: true do
-    attr :title, :string, required: true
-  end
-
-  def list(assigns) do
-    ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
-        </div>
-      </li>
-    </ul>
     """
   end
 
@@ -430,12 +420,6 @@ defmodule MijnverbruikWeb.CoreComponents do
   Heroicons come in three styles – outline, solid, and mini.
   By default, the outline style is used, but solid and mini may
   be applied by using the `-solid` and `-mini` suffix.
-
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
-
-  Icons are extracted from the `deps/heroicons` directory and bundled within
-  your compiled app.css by the plugin in `assets/vendor/heroicons.js`.
 
   ## Examples
 
@@ -458,9 +442,8 @@ defmodule MijnverbruikWeb.CoreComponents do
       to: selector,
       time: 300,
       transition:
-        {"transition-all ease-out duration-300",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
-         "opacity-100 translate-y-0 sm:scale-100"}
+        {"transition-all ease-out duration-300", "opacity-0 -translate-y-2",
+         "opacity-100 translate-y-0"}
     )
   end
 
@@ -469,25 +452,25 @@ defmodule MijnverbruikWeb.CoreComponents do
       to: selector,
       time: 200,
       transition:
-        {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
+        {"transition-all ease-in duration-200", "opacity-100 translate-y-0",
+         "opacity-0 -translate-y-2"}
     )
   end
 
+  # Dutch versions of the Ecto validation messages this app produces.
+  @messages %{
+    "can't be blank" => "Vul dit in",
+    "is invalid" => "Ongeldige waarde",
+    "must be greater than or equal to %{number}" => "Moet minstens %{number} zijn",
+    "must be less than or equal to %{number}" => "Mag hoogstens %{number} zijn",
+    "another tariff starts on this date" => "Op deze datum begint al een ander tarief"
+  }
+
   @doc """
-  Translates an error message using gettext.
+  Translates an error message to Dutch and fills in its values.
   """
   def translate_error({msg, opts}) do
-    # You can make use of gettext to translate error messages by
-    # uncommenting and adjusting the following code:
-
-    # if count = opts[:count] do
-    #   Gettext.dngettext(MijnverbruikWeb.Gettext, "errors", msg, msg, count, opts)
-    # else
-    #   Gettext.dgettext(MijnverbruikWeb.Gettext, "errors", msg, opts)
-    # end
-
-    Enum.reduce(opts, msg, fn {key, value}, acc ->
+    Enum.reduce(opts, Map.get(@messages, msg, msg), fn {key, value}, acc ->
       String.replace(acc, "%{#{key}}", fn _ -> to_string(value) end)
     end)
   end

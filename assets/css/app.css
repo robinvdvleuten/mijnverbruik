@@ -13,93 +13,319 @@
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. */
-@plugin "daisyui/packages/bundle/daisyui" {
-  themes: false;
-}
-
-/* daisyUI theme plugin.
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+/* The night look, set on <html> by the theme script in root.html.heex. */
+@custom-variant night (&:where([data-theme=night], [data-theme=night] *));
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
-/* This file is for your main application CSS */
+/*
+ * Design tokens. Day is a morning sky, night a starry one. Components use
+ * the Tailwind colours below, which read these variables, so both looks
+ * come from the same markup.
+ */
+:root {
+  color-scheme: light;
+  --sky: var(--sky-afternoon);
+  --sky-morning: linear-gradient(180deg, #86A9DA 0, #B9CDEA 10%, #EED9D2 20%, #F8CEAC 28%, #F6E3D5 38%, #EEF0F4 60%, #E6ECF3 100%);
+  --sky-afternoon: linear-gradient(180deg, #4C8BD3 0, #7FB2E6 14%, #B8D8F3 32%, #DCEAF6 52%, #EAF0F5 75%, #EFEDEA 100%);
+  --sky-evening: linear-gradient(180deg, #3D4C8C 0, #7B6FAA 14%, #D68E93 30%, #F2B184 44%, #F6D6BF 62%, #EFE8E4 82%, #E9E8EC 100%);
+  --sky-night: linear-gradient(180deg, #070B22 0, #0F1636 30%, #1A1F47 65%, #20234D 100%);
+  --ink: #132238;
+  --muted: #3E5068;
+  --subtle: #5C6E86;
+  --inverse: #132238;
+  --on-inverse: #F4F1FA;
+  --tile: rgb(255 255 255 / .8);
+  --tile-line: rgb(255 255 255 / .9);
+  --node: rgb(255 255 255 / .92);
+  --node-line: #FFFFFF;
+  --bar: rgb(255 255 255 / .72);
+  --bar-line: rgb(255 255 255 / .85);
+  --track: rgb(19 34 56 / .10);
+  --use: #EE6A2F;
+  --use-ink: #A1400F;
+  --return: #14957A;
+  --return-ink: #0E6653;
+  --gas: #4A5BD0;
+  --cost: #C93D72;
+  --cost-ink: #93234F;
+  --tip: #FFE1CC;
+  --on-tip: #5E2208;
+  --warn: #E0A21B;
+  --warn-bg: #FFF1D6;
+  --warn-line: #F2C46B;
+  --on-warn: #5C3D05;
+  --warn-ink: #8A5A00;
+  --stale: #8892A6;
+  --danger: #C62F2F;
+  --shadow: rgb(10 20 40 / .4);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%233E5068' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+}
+
+[data-theme=night] {
+  color-scheme: dark;
+  --sky: var(--sky-night);
+  --ink: #F4F1FA;
+  --muted: #C9C4DE;
+  --subtle: #A9A3C6;
+  --inverse: #F4F1FA;
+  --on-inverse: #1A1838;
+  --tile: rgb(28 26 60 / .72);
+  --tile-line: rgb(255 255 255 / .14);
+  --node: rgb(40 38 80 / .85);
+  --node-line: rgb(255 255 255 / .2);
+  --bar: rgb(30 28 64 / .75);
+  --bar-line: rgb(255 255 255 / .16);
+  --track: rgb(255 255 255 / .12);
+  --use: #FF9A62;
+  --use-ink: #FFB48A;
+  --return: #4FD1AE;
+  --return-ink: #4FD1AE;
+  --gas: #9AA6FF;
+  --cost: #FF86B0;
+  --cost-ink: #FFA6C6;
+  --tip: rgb(176 156 255 / .3);
+  --on-tip: #F1ECFF;
+  --warn: #F2B53A;
+  --warn-bg: rgb(242 181 58 / .16);
+  --warn-line: rgb(242 196 107 / .45);
+  --on-warn: #FFE2A8;
+  --warn-ink: #F2C46B;
+  --stale: #5D5A86;
+  --danger: #FF7A7A;
+  --shadow: rgb(0 0 0 / .5);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%23C9C4DE' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+}
+
+/* The day sky follows the time of day, set on <html> by the theme script:
+   morning until noon, afternoon, then evening in the last hours before
+   sunset. Night uses the night sky above. */
+[data-theme=day][data-sky=morning] { --sky: var(--sky-morning) }
+[data-theme=day][data-sky=evening] { --sky: var(--sky-evening) }
+
+@theme inline {
+  --font-sans: "Urbanist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
+  --color-tile: var(--tile);
+  --color-tile-line: var(--tile-line);
+  --color-node: var(--node);
+  --color-node-line: var(--node-line);
+  --color-bar: var(--bar);
+  --color-bar-line: var(--bar-line);
+  --color-track: var(--track);
+  --color-use: var(--use);
+  --color-use-ink: var(--use-ink);
+  --color-return: var(--return);
+  --color-return-ink: var(--return-ink);
+  --color-gas: var(--gas);
+  --color-cost: var(--cost);
+  --color-cost-ink: var(--cost-ink);
+  --color-tip: var(--tip);
+  --color-on-tip: var(--on-tip);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-line: var(--warn-line);
+  --color-on-warn: var(--on-warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-stale: var(--stale);
+  --color-danger: var(--danger);
+
+  --shadow-tile: 0 10px 30px -18px var(--shadow);
+  --shadow-float: 0 12px 30px -16px var(--shadow);
+  --shadow-orb: 0 20px 50px -20px var(--shadow);
+
+  --animate-flow: flow 1.2s linear infinite;
+  --animate-flow-back: flow-back 1.2s linear infinite;
+  --animate-pulse-dot: pulse-dot 2.4s ease-in-out infinite;
+  --animate-breathe: breathe 4.8s ease-in-out infinite;
+  --animate-halo: halo 3.6s ease-out infinite;
+}
+
+@keyframes flow { to { stroke-dashoffset: -24 } }
+@keyframes flow-back { to { stroke-dashoffset: 24 } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+@keyframes breathe { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.045) } }
+@keyframes halo { 0% { transform: scale(1); opacity: .8 } 100% { transform: scale(1.45); opacity: 0 } }
+@keyframes drift { from { transform: translateX(-60px) } to { transform: translateX(140px) } }
+
+@layer base {
+  html {
+    background: var(--sky);
+    background-color: var(--ink);
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--sky);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The theme changes at sunrise and sunset; fade rather than flash. The
+     theme script sets this class for the length of the switch only. */
+  .theme-fade, .theme-fade * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: .6s;
+    transition-timing-function: ease;
+  }
+}
+
+/* The frosted surface cards, tiles and panels sit on. */
+@layer components {
+  .surface {
+    min-width: 0;
+    border-radius: 1.5rem;
+    border: 1px solid var(--tile-line);
+    background: var(--tile);
+    backdrop-filter: blur(24px);
+  }
+}
+
+/* Clouds drift across the day sky; stars replace them at night. */
+.sky {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 720px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sky .cloud {
+  position: absolute;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgb(255 255 255 / .95) 0, transparent 68%);
+  filter: blur(6px);
+  animation: drift 90s ease-in-out infinite alternate;
+  transition: opacity 1.2s ease;
+}
+
+.sky .stars {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.sky .stars::before,
+.sky .stars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.5px;
+  height: 1.5px;
+  border-radius: 50%;
+  box-shadow:
+    0px 943px 0 1px rgba(255,255,255,0.83),
+    1226px 774px 0 0px rgba(255,255,255,0.53),
+    100px 1002px 0 0px rgba(255,255,255,0.78),
+    745px 758px 0 0px rgba(255,255,255,0.79),
+    168px 378px 0 0px rgba(255,255,255,0.44),
+    1351px 31px 0 0px rgba(255,255,255,0.94),
+    185px 683px 0 0px rgba(255,255,255,0.88),
+    1078px 651px 0 0px rgba(255,255,255,0.85),
+    651px 607px 0 1px rgba(255,255,255,0.78),
+    1236px 57px 0 0px rgba(255,255,255,0.80),
+    519px 1120px 0 0px rgba(255,255,255,0.38),
+    835px 128px 0 0px rgba(255,255,255,0.70),
+    1354px 336px 0 0px rgba(255,255,255,0.49),
+    1408px 1036px 0 0px rgba(255,255,255,0.69),
+    564px 106px 0 0px rgba(255,255,255,0.76),
+    42px 443px 0 0px rgba(255,255,255,0.54),
+    436px 1051px 0 1px rgba(255,255,255,0.56),
+    1314px 1050px 0 0px rgba(255,255,255,0.76),
+    1052px 619px 0 0px rgba(255,255,255,0.94),
+    147px 246px 0 0px rgba(255,255,255,0.85),
+    600px 46px 0 0px rgba(255,255,255,0.79),
+    705px 117px 0 0px rgba(255,255,255,0.75),
+    280px 412px 0 0px rgba(255,255,255,0.39),
+    486px 70px 0 0px rgba(255,255,255,0.59),
+    241px 456px 0 0px rgba(255,255,255,0.83),
+    367px 709px 0 0px rgba(255,255,255,0.80),
+    360px 112px 0 0px rgba(255,255,255,0.93),
+    1205px 689px 0 1px rgba(255,255,255,0.41),
+    204px 69px 0 0px rgba(255,255,255,0.39),
+    1224px 649px 0 0px rgba(255,255,255,0.37),
+    1417px 91px 0 0px rgba(255,255,255,0.74),
+    1226px 332px 0 0px rgba(255,255,255,0.69),
+    1372px 1114px 0 1px rgba(255,255,255,0.54),
+    924px 605px 0 1px rgba(255,255,255,0.63),
+    1434px 56px 0 0px rgba(255,255,255,0.70),
+    1023px 258px 0 0px rgba(255,255,255,0.84),
+    164px 772px 0 0px rgba(255,255,255,0.89),
+    649px 501px 0 0px rgba(255,255,255,0.60),
+    683px 232px 0 0px rgba(255,255,255,0.61),
+    26px 419px 0 0px rgba(255,255,255,0.52),
+    988px 85px 0 0px rgba(255,255,255,0.72),
+    1287px 624px 0 1px rgba(255,255,255,0.50),
+    1067px 732px 0 1px rgba(255,255,255,0.86),
+    123px 1180px 0 0px rgba(255,255,255,0.50),
+    441px 391px 0 0px rgba(255,255,255,0.46),
+    513px 1109px 0 0px rgba(255,255,255,0.39),
+    150px 489px 0 0px rgba(255,255,255,0.40),
+    897px 714px 0 1px rgba(255,255,255,0.94),
+    661px 55px 0 1px rgba(255,255,255,0.78),
+    582px 430px 0 1px rgba(255,255,255,0.45),
+    961px 276px 0 0px rgba(255,255,255,0.57),
+    359px 516px 0 0px rgba(255,255,255,0.77),
+    551px 442px 0 0px rgba(255,255,255,0.52),
+    653px 212px 0 0px rgba(255,255,255,0.80),
+    405px 552px 0 0px rgba(255,255,255,0.70),
+    1373px 340px 0 0px rgba(255,255,255,0.90),
+    1226px 1111px 0 0px rgba(255,255,255,0.79),
+    154px 687px 0 0px rgba(255,255,255,0.76),
+    222px 155px 0 0px rgba(255,255,255,0.64),
+    408px 1138px 0 0px rgba(255,255,255,0.37),
+    1273px 187px 0 0px rgba(255,255,255,0.69),
+    325px 750px 0 0px rgba(255,255,255,0.42),
+    546px 999px 0 0px rgba(255,255,255,0.74),
+    1076px 211px 0 0px rgba(255,255,255,0.76),
+    1370px 828px 0 0px rgba(255,255,255,0.86),
+    585px 683px 0 0px rgba(255,255,255,0.88),
+    607px 982px 0 1px rgba(255,255,255,0.45),
+    1312px 605px 0 0px rgba(255,255,255,0.75),
+    724px 1189px 0 0px rgba(255,255,255,0.82),
+    765px 699px 0 0px rgba(255,255,255,0.37),
+    445px 160px 0 0px rgba(255,255,255,0.59),
+    683px 713px 0 1px rgba(255,255,255,0.50),
+    1298px 529px 0 0px rgba(255,255,255,0.48),
+    463px 1036px 0 0px rgba(255,255,255,0.64),
+    985px 212px 0 0px rgba(255,255,255,0.92),
+    842px 64px 0 1px rgba(255,255,255,0.40),
+    484px 615px 0 0px rgba(255,255,255,0.45),
+    1072px 196px 0 0px rgba(255,255,255,0.75),
+    975px 703px 0 0px rgba(255,255,255,0.72),
+    923px 838px 0 1px rgba(255,255,255,0.65),
+    58px 928px 0 0px rgba(255,255,255,0.61),
+    208px 225px 0 0px rgba(255,255,255,0.71),
+    1420px 715px 0 0px rgba(255,255,255,0.59),
+    211px 1050px 0 0px rgba(255,255,255,0.59);
+}
+
+.sky .stars::after { transform: translateX(1440px) }
+
+[data-theme=night] .sky .cloud { opacity: 0 !important }
+[data-theme=night] .sky .stars { opacity: 1 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
