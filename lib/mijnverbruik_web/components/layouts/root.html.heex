@@ -1,38 +1,84 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl" {location_attrs()}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="Mijnverbruik" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <.live_title default="mijnverbruik" suffix=" · mijnverbruik" phx-no-format>{assigns[:page_title]}</.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/js/app.css"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
+    <%!-- Inline so the right sky shows before the first paint. The theme
+          "auto" follows sunrise and sunset at the location on <html>; "day"
+          and "night" are manual choices from the settings page. By day the
+          sky follows the time of day unless the sky preference is "fixed". --%>
     <script>
       (() => {
-        const systemTheme = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        const key = "mijnverbruik:theme";
+        const skyKey = "mijnverbruik:sky";
+        const html = document.documentElement;
 
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.setAttribute("data-theme", systemTheme());
-            document.documentElement.setAttribute("data-theme-source", "system");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-            document.documentElement.setAttribute("data-theme-source", "user");
+        // Sunrise and sunset in ms, after the NOAA solar equations as used by
+        // SunCalc. Falls back to 07:00–19:00 where the sun does not set or rise.
+        const sunTimes = (now, lat, lon) => {
+          const rad = Math.PI / 180, day = 864e5, J1970 = 2440588, J2000 = 2451545, J0 = 0.0009;
+          const days = now / day - 0.5 + J1970 - J2000;
+          const lw = -lon * rad, phi = lat * rad;
+          const n = Math.round(days - J0 - lw / (2 * Math.PI));
+          const ds = J0 + lw / (2 * Math.PI) + n;
+          const M = rad * (357.5291 + 0.98560028 * ds);
+          const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+          const L = M + C + rad * 102.9372 + Math.PI;
+          const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397));
+          const noon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+          const w = Math.acos((Math.sin(rad * -0.833) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec)));
+          const toMs = (j) => (j + 0.5 - J1970) * day;
+          if (Number.isNaN(w)) {
+            const midnight = new Date(now).setHours(0, 0, 0, 0);
+            return {rise: midnight + 7 * 36e5, noon: midnight + 13 * 36e5, set: midnight + 19 * 36e5};
           }
+          const set = J2000 + J0 + (w + lw) / (2 * Math.PI) + n + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+          return {rise: toMs(noon - (set - noon)), noon: toMs(noon), set: toMs(set)};
         };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
-        }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
 
-        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-          if (document.documentElement.getAttribute("data-theme-source") === "system") {
-            document.documentElement.setAttribute("data-theme", systemTheme());
+        const apply = () => {
+          const pref = localStorage.getItem(key) || "auto";
+          const skyPref = localStorage.getItem(skyKey) || "time";
+          const now = Date.now();
+          const {rise, noon, set} = sunTimes(now, parseFloat(html.dataset.latitude), parseFloat(html.dataset.longitude));
+          const theme = pref === "auto" ? (now >= rise && now < set ? "day" : "night") : pref;
+          let sky = "afternoon";
+          if (theme === "night") sky = "night";
+          else if (skyPref === "time") sky = now < noon ? "morning" : now < set - 90 * 6e4 ? "afternoon" : "evening";
+
+          html.dataset.themePreference = pref;
+          html.dataset.skyPreference = skyPref;
+          // The settings page's controls mirror these preferences.
+          document.querySelectorAll("[data-phx-theme]").forEach((el) => el.setAttribute("aria-checked", el.dataset.phxTheme === pref))
+          document.querySelectorAll("[data-sky-switch]").forEach((el) => el.setAttribute("aria-checked", skyPref === "time"))
+          if (html.dataset.theme === theme && html.dataset.sky === sky) return;
+          if (html.dataset.theme) {
+            html.classList.add("theme-fade");
+            setTimeout(() => html.classList.remove("theme-fade"), 1200);
           }
+          html.dataset.theme = theme;
+          html.dataset.sky = sky;
+        };
+
+        apply();
+        setInterval(apply, 60e3);
+        window.addEventListener("phx:page-loading-stop", apply);
+        window.addEventListener("storage", (e) => (e.key === key || e.key === skyKey) && apply());
+        window.addEventListener("phx:set-sky", () => {
+          const current = localStorage.getItem(skyKey) || "time";
+          localStorage.setItem(skyKey, current === "time" ? "fixed" : "time");
+          apply();
+        });
+        window.addEventListener("phx:set-theme", (e) => {
+          const pref = e.target.dataset.phxTheme;
+          pref === "auto" ? localStorage.removeItem(key) : localStorage.setItem(key, pref);
+          apply();
         });
       })();
     </script>

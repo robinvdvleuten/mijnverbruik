@@ -27,16 +27,30 @@ defmodule MijnverbruikWeb.HistoryLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/history?period=day&date=2026-10-02")
 
-    assert view |> element("#period-title") |> render() =~ "Friday 2 October 2026"
-    assert view |> element("#total-electricity") |> render() =~ "1.50 kWh"
+    assert view |> element("#period-title") |> render() =~ "Vrijdag 2 oktober 2026"
+    assert view |> element("#total-electricity") |> render() =~ "1,50"
     assert view |> element("#total-electricity") |> render() =~ "+50%"
     assert has_element?(view, "#history-electricity")
     assert has_element?(view, "#history-gas")
+
+    # A past day has no "now" marker; each hour has a tooltip with the day before.
+    tip =
+      view
+      |> element("#history-electricity-chart [data-bar]:nth-child(11)")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.attribute("data-tip")
+      |> hd()
+      |> Jason.decode!()
+
+    assert tip["title"] == "10:00 – 11:00"
+    assert ["Afname", "1,50 kWh", _] = hd(tip["rows"])
+    assert ["Dag ervoor", "1,00 kWh", _] = List.last(tip["rows"])
   end
 
   test "switches periods and steps back and forth", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/history?period=week&date=2026-10-07")
-    assert view |> element("#period-title") |> render() =~ "Week 41"
+    assert view |> element("#period-title") |> render() =~ "Week 41 · 5 – 11 oktober 2026"
 
     view |> element("#previous-period") |> render_click()
     assert_patch(view, ~p"/history?#{[date: "2026-09-28", period: "week"]}")

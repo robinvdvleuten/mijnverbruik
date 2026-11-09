@@ -18,7 +18,7 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/settings")
 
     assert view |> form("#tariff-form", tariff: %{"gas" => "-1"}) |> render_change() =~
-             "must be greater than or equal to 0"
+             "Moet minstens 0 zijn"
 
     view |> form("#tariff-form", tariff: @params) |> render_submit()
     [tariff] = Tariffs.list_tariffs()
@@ -45,7 +45,7 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/settings")
 
     html = view |> form("#tariff-form", tariff: %{"contract" => "dynamic"}) |> render_change()
-    assert html =~ "on top of market price"
+    assert html =~ "bovenop marktprijs"
     refute has_element?(view, "#tariff_electricity_low")
 
     view
@@ -68,13 +68,67 @@ defmodule MijnverbruikWeb.SettingsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/settings")
 
     assert view |> form("#tariff-form", tariff: %{"gas_contract" => "dynamic"}) |> render_change() =~
-             "Gas, on top of market price"
+             "Gas, bovenop marktprijs"
 
     view
     |> form("#tariff-form", tariff: Map.put(@params, "gas_contract", "dynamic"))
     |> render_submit()
 
     assert [%{gas_contract: :dynamic, contract: :fixed} = tariff] = Tariffs.list_tariffs()
-    assert view |> element("#tariffs-#{tariff.id}") |> render() =~ "Gas market + €1.45"
+    assert view |> element("#tariffs-#{tariff.id}") |> render() =~ "gas markt + € 1,45 per m³"
+  end
+
+  test "shows what the meter says about itself once a telegram arrives", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert view |> element("#meter") |> render() =~ "Wachten op de meter"
+
+    {:ok, telegram} = DSMR.parse(Mijnverbruik.TelegramFixtures.raw_telegram())
+    send(view.pid, {:telegram, telegram})
+
+    meter = view |> element("#meter") |> render()
+    assert meter =~ "Verbonden"
+    assert meter =~ "Kaifa"
+    assert meter =~ "DSMR 4.2"
+    assert meter =~ "3-fase"
+
+    send(view.pid, :meter_offline)
+    assert view |> element("#meter") |> render() =~ "Niet verbonden"
+  end
+
+  test "marks the tariff that applies today as active", %{conn: conn} do
+    {:ok, old} = Tariffs.create_tariff(@params)
+
+    {:ok, current} =
+      Tariffs.create_tariff(%{@params | "valid_from" => Date.to_iso8601(Date.utc_today())})
+
+    {:ok, view, _html} = live(conn, ~p"/settings")
+    assert view |> element("#tariffs-#{current.id}") |> render() =~ "actief"
+    refute view |> element("#tariffs-#{old.id}") |> render() =~ "actief"
+  end
+
+  test "saves the location for sunrise and sunset", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    assert {:error, {:redirect, %{to: "/settings"}}} =
+             view
+             |> form("#location-form", location: %{latitude: "53.2", longitude: "6.57"})
+             |> render_submit()
+
+    assert Mijnverbruik.Settings.location() == %{latitude: 53.2, longitude: 6.57}
+
+    html = conn |> get(~p"/settings") |> html_response(200)
+    assert html =~ ~s(data-latitude="53.2")
+  end
+
+  test "refuses half a location", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    html =
+      view
+      |> form("#location-form", location: %{latitude: "53.2", longitude: ""})
+      |> render_submit()
+
+    assert html =~ "Vul dit in"
+    assert Mijnverbruik.Settings.location() == %{latitude: 52.1, longitude: 5.18}
   end
 end
