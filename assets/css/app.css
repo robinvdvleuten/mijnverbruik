@@ -185,6 +185,17 @@
   }
 }
 
+/* The frosted surface cards, tiles and panels sit on. */
+@layer components {
+  .surface {
+    min-width: 0;
+    border-radius: 1.5rem;
+    border: 1px solid var(--tile-line);
+    background: var(--tile);
+    backdrop-filter: blur(24px);
+  }
+}
+
 /* Clouds drift across the day sky; stars replace them at night. */
 .sky {
   position: absolute;

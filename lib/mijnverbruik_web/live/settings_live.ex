@@ -18,7 +18,7 @@ defmodule MijnverbruikWeb.SettingsLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Instellingen", tz: Application.fetch_env!(:mijnverbruik, :timezone))
+     |> assign(page_title: "Instellingen")
      |> assign(meter: nil, meter_at: nil, offline?: false)
      |> assign(phases: phase_count(latest))
      |> assign(settings_form: to_form(Settings.change(setting)))
@@ -42,7 +42,7 @@ defmodule MijnverbruikWeb.SettingsLive do
   end
 
   defp assign_tariffs(socket, tariffs) do
-    today = socket.assigns.tz |> DateTime.now!() |> DateTime.to_date()
+    today = timezone() |> DateTime.now!() |> DateTime.to_date()
     active = Tariffs.valid_on(tariffs, today)
 
     socket
@@ -52,12 +52,17 @@ defmodule MijnverbruikWeb.SettingsLive do
 
   @impl true
   def handle_info({:telegram, telegram}, socket) do
+    # What the meter says about itself does not change; only the time does.
+    socket =
+      if socket.assigns.meter,
+        do: socket,
+        else: assign(socket, meter: telegram |> Meter.info() |> meter_labels())
+
     {:noreply,
      assign(socket,
-       meter: meter_info(telegram),
        meter_at: System.os_time(:second),
        offline?: false,
-       phases: length(Meter.live(telegram).phases)
+       phases: socket.assigns.meter.phases
      )}
   end
 
@@ -128,52 +133,20 @@ defmodule MijnverbruikWeb.SettingsLive do
     socket |> assign_tariffs(tariffs) |> edit(new_tariff(tariffs))
   end
 
-  # What the meter tells about itself in its telegrams.
-  defp meter_info(telegram) do
-    version = parse_version(telegram.version)
-    gas? = Enum.any?(telegram.mbus_devices, &(&1.device_type == "003"))
-
+  # Dutch labels for what the meter tells about itself.
+  defp meter_labels(%{make: make, version: version, phases: phases, gas: gas}) do
     %{
-      make: make(telegram.header),
+      make: make || "Onbekend",
       protocol: if(version, do: "DSMR #{div(version, 10)}.#{rem(version, 10)}", else: "DSMR"),
-      phases: length(Meter.live(telegram).phases),
-      # DSMR 5 meters pass on the gas reading every 5 minutes, older ones hourly.
+      phases: phases,
       gas:
-        cond do
-          not gas? -> "geen"
-          version && version >= 50 -> "elke 5 min"
-          true -> "elk uur"
+        case gas do
+          nil -> "geen"
+          :five_minutes -> "elke 5 min"
+          :hourly -> "elk uur"
         end
     }
   end
-
-  defp parse_version(v) when is_binary(v) do
-    case Integer.parse(v) do
-      {n, _} -> n
-      :error -> nil
-    end
-  end
-
-  defp parse_version(_v), do: nil
-
-  # The header starts with the maker's three-letter flag code.
-  @makes %{
-    "ISK" => "Iskra",
-    "KFM" => "Kaifa",
-    "KMP" => "Kamstrup",
-    "XMX" => "Xemex",
-    "LGB" => "Landis+Gyr",
-    "LGF" => "Landis+Gyr",
-    "ENE" => "Sagemcom",
-    "SAG" => "Sagemcom"
-  }
-
-  defp make(header) when is_binary(header) do
-    code = header |> String.trim_leading("/") |> String.slice(0, 3) |> String.upcase()
-    Map.get(@makes, code, String.trim_leading(header, "/"))
-  end
-
-  defp make(_header), do: "Onbekend"
 
   defp dynamic?(form, field), do: to_string(form[field].value) == "dynamic"
 
@@ -196,8 +169,6 @@ defmodule MijnverbruikWeb.SettingsLive do
     gas <> " · vast #{euro(Decimal.to_float(t.fixed_per_month))} per maand"
   end
 
-  defp short_date(date), do: "#{date.day} #{short_month(date)} #{date.year}"
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -209,17 +180,14 @@ defmodule MijnverbruikWeb.SettingsLive do
       </.section>
       <div
         id="meter"
-        class="flex flex-col gap-[18px] rounded-3xl border border-tile-line bg-tile p-5 backdrop-blur-xl sm:p-[22px]"
+        class="surface flex flex-col gap-[18px] p-5 sm:p-[22px]"
       >
         <p class="flex items-center gap-2.5 text-base font-bold">
           <%= cond do %>
             <% @meter && !@offline? -> %>
               <span class="size-2.5 rounded-full bg-return animate-pulse-dot" /> Verbonden
               <span class="ml-auto font-mono text-xs font-medium text-muted">
-                laatste meting {@meter_at
-                |> DateTime.from_unix!()
-                |> DateTime.shift_zone!(@tz)
-                |> Calendar.strftime("%H:%M:%S")}
+                laatste meting {local_time(@meter_at, "%H:%M:%S")}
               </span>
             <% @offline? -> %>
               <span class="size-2.5 rounded-full bg-warn" /> Niet verbonden
@@ -252,7 +220,7 @@ defmodule MijnverbruikWeb.SettingsLive do
         for={@settings_form}
         id="settings-form"
         phx-submit="save_settings"
-        class="flex flex-col gap-3.5 rounded-3xl border border-tile-line bg-tile p-5 backdrop-blur-xl sm:flex-row sm:items-end sm:p-[22px]"
+        class="surface flex flex-col gap-3.5 p-5 sm:flex-row sm:items-end sm:p-[22px]"
       >
         <div class="flex-1">
           <.input
@@ -265,7 +233,8 @@ defmodule MijnverbruikWeb.SettingsLive do
         </div>
         <.button
           variant="primary"
-          class="h-12 self-start px-6 text-[15px] sm:self-auto"
+          size="lg"
+          class="self-start sm:self-auto"
           phx-disable-with="Opslaan…"
         >
           Opslaan
@@ -278,7 +247,7 @@ defmodule MijnverbruikWeb.SettingsLive do
       <ul
         id="tariffs"
         phx-update="stream"
-        class="overflow-hidden rounded-3xl border border-tile-line bg-tile backdrop-blur-xl"
+        class="surface overflow-hidden"
       >
         <li id="tariffs-empty" class="hidden p-[22px] text-[15px] text-muted only:block">
           Nog geen tarieven. Voeg er hieronder een toe om kosten op het dashboard te zien.
@@ -331,7 +300,7 @@ defmodule MijnverbruikWeb.SettingsLive do
         id="tariff-form"
         phx-change="validate"
         phx-submit="save"
-        class="flex flex-col gap-[18px] rounded-3xl border border-tile-line bg-tile px-5 py-6 backdrop-blur-xl sm:px-[22px]"
+        class="surface flex flex-col gap-[18px] px-5 py-6 sm:px-[22px]"
       >
         <h2 class="text-[19px] font-bold">
           {if @tariff.id, do: "Tarief bewerken", else: "Tarief toevoegen"} · {if dynamic?(
@@ -419,13 +388,13 @@ defmodule MijnverbruikWeb.SettingsLive do
           </div>
         </div>
         <div class="flex gap-2">
-          <.button variant="primary" class="h-12 px-6 text-[15px]" phx-disable-with="Opslaan…">Tarief opslaan</.button>
-          <.button :if={@tariff.id} type="button" class="h-12 px-6 text-[15px]" phx-click="cancel">Annuleren</.button>
+          <.button variant="primary" size="lg" phx-disable-with="Opslaan…">Tarief opslaan</.button>
+          <.button :if={@tariff.id} type="button" size="lg" phx-click="cancel">Annuleren</.button>
         </div>
       </.form>
 
       <.section id="display-title" title="Weergave" />
-      <div class="flex flex-col gap-3.5 rounded-3xl border border-tile-line bg-tile px-5 pb-[22px] pt-3.5 backdrop-blur-xl sm:px-[22px]">
+      <div class="surface flex flex-col gap-3.5 px-5 pb-[22px] pt-3.5 sm:px-[22px]">
         <div id="display-controls" phx-update="ignore" class="flex flex-col gap-3.5">
           <div class="flex min-h-12 items-center justify-between gap-4 border-b border-ink/10 pb-3.5">
             <div class="flex min-w-0 flex-col gap-[3px]">
@@ -498,7 +467,8 @@ defmodule MijnverbruikWeb.SettingsLive do
             />
             <.button
               variant="primary"
-              class="h-12 self-start px-6 text-[15px] sm:self-auto"
+              size="lg"
+              class="self-start sm:self-auto"
               phx-disable-with="Opslaan…"
             >
               Opslaan

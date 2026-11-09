@@ -65,7 +65,6 @@ defmodule MijnverbruikWeb.CoreComponents do
   """
   attr :id, :string, default: nil
   attr :class, :any, default: nil
-  attr :stale, :boolean, default: false, doc: "dims the card while its values are not current"
   attr :rest, :global
   slot :title, doc: "a heading at the top left"
   slot :aside, doc: "a short note at the top right, in mono"
@@ -76,7 +75,7 @@ defmodule MijnverbruikWeb.CoreComponents do
     <section
       id={@id}
       class={[
-        "flex min-w-0 flex-col gap-2.5 rounded-3xl border border-tile-line bg-tile px-5 py-[18px] backdrop-blur-xl sm:px-[22px] sm:py-5",
+        "surface flex flex-col gap-2.5 px-5 py-[18px] sm:px-[22px] sm:py-5",
         @class
       ]}
       {@rest}
@@ -99,18 +98,52 @@ defmodule MijnverbruikWeb.CoreComponents do
 
       <.figure value="2,14" unit="kWh" />
   """
-  attr :id, :string, default: nil
   attr :value, :string, required: true
   attr :unit, :string, default: nil
   attr :size, :string, default: "text-[30px]", doc: "the number's text size class"
-  attr :class, :any, default: nil
 
   def figure(assigns) do
     ~H"""
-    <p class={["flex items-baseline gap-1.5", @class]}>
-      <span id={@id} class={["font-bold leading-none tracking-[-0.035em]", @size]}>{@value}</span>
+    <p class="flex items-baseline gap-1.5">
+      <span class={["font-bold leading-none tracking-[-0.035em]", @size]}>{@value}</span>
       <span :if={@unit} class="text-xs font-semibold text-muted">{@unit}</span>
     </p>
+    """
+  end
+
+  @doc """
+  One total in a row of tiles: a coloured dot and label, a big number with
+  its unit, and optionally a note under it. Without a value, the inner block
+  takes its place, e.g. a link to set something up.
+
+  ## Examples
+
+      <.stat id="today-gas" dot="bg-gas" label="Gas" value="0,58" unit="m³" />
+  """
+  attr :id, :string, required: true
+  attr :dot, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, default: nil
+  attr :unit, :string, default: nil
+  slot :inner_block
+  slot :note, doc: "a line under the value"
+
+  def stat(assigns) do
+    ~H"""
+    <div id={@id} class="surface flex flex-col gap-1.5 px-5 py-[18px]">
+      <dt class="flex items-center gap-[7px] text-[13px] text-muted">
+        <.dot class={@dot} />{@label}
+      </dt>
+      <dd class="flex items-baseline gap-1.5">
+        <%= if @value do %>
+          <span class="text-2xl font-bold leading-none tracking-[-0.035em] md:text-[32px]">{@value}</span>
+          <span :if={@unit} class="text-[11px] font-semibold text-muted md:text-xs">{@unit}</span>
+        <% else %>
+          {render_slot(@inner_block)}
+        <% end %>
+      </dd>
+      <dd :for={note <- @note}>{render_slot(note)}</dd>
+    </div>
     """
   end
 
@@ -136,7 +169,6 @@ defmodule MijnverbruikWeb.CoreComponents do
   attr :title, :string, required: true
   attr :tone, :atom, values: [:warn, :danger], default: :warn
   slot :inner_block, required: true
-  slot :action
 
   def banner(assigns) do
     ~H"""
@@ -159,7 +191,6 @@ defmodule MijnverbruikWeb.CoreComponents do
         {@title}
       </p>
       <p class="min-w-0 flex-1 basis-60 text-sm text-pretty">{render_slot(@inner_block)}</p>
-      {render_slot(@action)}
     </div>
     """
   end
@@ -176,13 +207,15 @@ defmodule MijnverbruikWeb.CoreComponents do
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled type)
   attr :class, :any, default: nil
   attr :variant, :string, values: [nil, "primary"], default: nil
+  attr :size, :string, values: ~w(md lg), default: "md", doc: "lg matches the height of inputs"
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
     assigns =
       assign(assigns,
         class: [
-          "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-bold transition duration-200 active:scale-[.97] disabled:opacity-50 phx-submit-loading:opacity-70",
+          "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-bold transition duration-200 active:scale-[.97] disabled:opacity-50 phx-submit-loading:opacity-70",
+          if(assigns.size == "lg", do: "h-12 px-6 text-[15px]", else: "px-5 py-2.5 text-sm"),
           if(assigns.variant == "primary",
             do: "bg-inverse text-on-inverse shadow-float hover:-translate-y-px",
             else: "bg-track text-ink hover:bg-inverse/15"

@@ -17,7 +17,7 @@ defmodule MijnverbruikWeb.HistoryLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    tz = Application.fetch_env!(:mijnverbruik, :timezone)
+    tz = timezone()
     today = tz |> DateTime.now!() |> DateTime.to_date()
     period = if params["period"] in @periods, do: params["period"], else: "day"
 
@@ -137,7 +137,7 @@ defmodule MijnverbruikWeb.HistoryLive do
   defp per(_period), do: "dag"
 
   defp ticks("day", _bars), do: ~w(00:00 04:00 08:00 12:00 16:00 20:00 24:00)
-  defp ticks("week", bars), do: Enum.map(bars, &weekday_label(&1.date))
+  defp ticks("week", bars), do: Enum.map(bars, &weekday_day(&1.date))
   defp ticks("year", _bars), do: ~w(jan feb mrt apr mei jun jul aug sep okt nov dec)
 
   defp ticks("month", bars) do
@@ -147,8 +147,6 @@ defmodule MijnverbruikWeb.HistoryLive do
   defp ticks_narrow("day", _bars), do: ~w(00 06 12 18 24)
   defp ticks_narrow("year", _bars), do: ~w(jan apr jul okt)
   defp ticks_narrow(period, bars), do: ticks(period, bars)
-
-  defp weekday_label(date), do: "#{date |> weekday() |> String.slice(0, 2)} #{date.day}"
 
   defp electricity(usage),
     do:
@@ -378,31 +376,20 @@ defmodule MijnverbruikWeb.HistoryLive do
     assigns = assign(assigns, change: change)
 
     ~H"""
-    <div
-      id={@id}
-      class="flex min-w-0 flex-col gap-2 rounded-3xl border border-tile-line bg-tile px-5 py-[18px] backdrop-blur-xl"
-    >
-      <dt class="flex items-center gap-[7px] text-[13px] text-muted">
-        <.dot class={@dot} />{@label}
-      </dt>
-      <dd class="flex items-baseline gap-1.5">
-        <span class="text-2xl font-bold leading-none tracking-[-0.03em] md:text-[30px]">{@value}</span>
-        <span :if={@unit} class="text-[13px] font-semibold text-muted">{@unit}</span>
-      </dd>
-      <dd
-        :if={@change}
-        class={[
+    <.stat id={@id} dot={@dot} label={@label} value={@value} unit={@unit}>
+      <:note :if={@change}>
+        <span class={[
           "font-mono text-xs",
           cond do
             @change == 0 -> "text-subtle"
             @change > 0 == @more_is_better -> "text-return-ink"
             true -> "text-use-ink"
           end
-        ]}
-      >
-        {if @change > 0, do: "+", else: if(@change < 0, do: "−")}{abs(@change)}%
-      </dd>
-    </div>
+        ]}>
+          {if @change > 0, do: "+", else: if(@change < 0, do: "−")}{abs(@change)}%
+        </span>
+      </:note>
+    </.stat>
     """
   end
 end

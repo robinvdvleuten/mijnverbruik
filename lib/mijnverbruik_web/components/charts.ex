@@ -259,14 +259,14 @@ defmodule MijnverbruikWeb.Charts do
           class="absolute -top-4 right-0 font-mono text-[10px] text-cost-ink"
           aria-hidden="true"
         >
-          {MijnverbruikWeb.Format.euro(@cost_top)}
+          {euro(@cost_top)}
         </span>
         <span
           :if={@cost_line}
           class="absolute right-0 top-[calc(50%-16px)] font-mono text-[10px] text-cost-ink"
           aria-hidden="true"
         >
-          {MijnverbruikWeb.Format.euro(@cost_top / 2)}
+          {euro(@cost_top / 2)}
         </span>
 
         <svg
@@ -348,7 +348,7 @@ defmodule MijnverbruikWeb.Charts do
           style={"left: #{fmt((elem(@peak_bar, 1) + 0.5) / @count * 100)}%; top: #{fmt(@zero - elem(@peak_bar, 0).up * @scale)}%"}
           aria-hidden="true"
         >
-          piek {elem(@peak_bar, 0).title} · {MijnverbruikWeb.Format.m3(elem(@peak_bar, 0).up)}
+          piek {elem(@peak_bar, 0).title} · {m3(elem(@peak_bar, 0).up)}
         </div>
 
         <div
@@ -441,7 +441,7 @@ defmodule MijnverbruikWeb.Charts do
           ["Teruglevering", value(Map.get(bar, :down) || 0, unit), "var(--return)"]
         ] ++
           if(is_number(bar[:cost]),
-            do: [["Kosten", MijnverbruikWeb.Format.euro(bar.cost), "var(--cost)"]],
+            do: [["Kosten", euro(bar.cost), "var(--cost)"]],
             else: []
           )
       end
@@ -452,21 +452,21 @@ defmodule MijnverbruikWeb.Charts do
     })
   end
 
+  # The smallest of 1, 2, 2.5, 5 or 10 times a power of ten that is at least `x`.
+  defp nice_step(x) do
+    magnitude = :math.pow(10, :math.floor(:math.log10(x)))
+    Enum.find([1, 2, 2.5, 5, 10], &(&1 * magnitude >= x)) * magnitude
+  end
+
   # A round number at or just above `max`, for the cost axis.
   defp nice_ceiling(max) when max <= 0, do: 0
-
-  defp nice_ceiling(max) do
-    magnitude = :math.pow(10, :math.floor(:math.log10(max)))
-    Enum.find([1, 2, 2.5, 5, 10], &(&1 * magnitude >= max)) * magnitude
-  end
+  defp nice_ceiling(max), do: nice_step(max)
 
   # Two or three round values between zero and `max`.
   defp gridlines(max) when max <= 0, do: []
 
   defp gridlines(max) do
-    raw = max / 2.5
-    magnitude = :math.pow(10, :math.floor(:math.log10(raw)))
-    step = Enum.find([1, 2, 2.5, 5, 10], &(&1 * magnitude >= raw)) * magnitude
+    step = nice_step(max / 2.5)
 
     1
     |> Stream.iterate(&(&1 + 1))
@@ -620,9 +620,6 @@ defmodule MijnverbruikWeb.Charts do
   @doc "A value with its unit, as the chart readouts show it."
   def value(v, :kwh), do: "#{kwh(v)} kWh"
   def value(v, :m3), do: "#{m3(v)} m³"
-  def value(v, :eur_kwh), do: "#{euro_3(v)}/kWh"
+  def value(v, :eur_kwh), do: "#{euro(v, 3)}/kWh"
   def value(v, :w), do: "#{watts(v)} W"
-
-  defp euro_3(v) when v < 0, do: "−€ " <> decimal(-v, 3)
-  defp euro_3(v), do: "€ " <> decimal(v, 3)
 end

@@ -118,8 +118,8 @@ defmodule MijnverbruikWeb.Layouts do
   # The local time, kept current in the browser, with a pulsing dot while the
   # meter sends data. Hidden on phones, where the menu needs the room.
   defp clock(assigns) do
-    tz = Application.fetch_env!(:mijnverbruik, :timezone)
-    assigns = assign(assigns, time: tz |> DateTime.now!() |> Calendar.strftime("%H:%M"))
+    assigns =
+      assign(assigns, time: MijnverbruikWeb.Format.local_time(System.os_time(:second), "%H:%M"))
 
     ~H"""
     <div class="hidden items-center gap-2 pr-3 font-mono text-xs text-muted sm:flex">

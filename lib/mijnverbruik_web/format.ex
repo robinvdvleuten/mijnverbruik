@@ -17,9 +17,11 @@ defmodule MijnverbruikWeb.Format do
   @doc "Whole watts with a thousands separator, e.g. `1.222`."
   def watts(w), do: w |> round() |> integer()
 
-  @doc "Euros with two decimals, e.g. `€ 1,23` or `−€ 0,40`."
-  def euro(amount) when amount < -0.005, do: "−€ " <> decimal(-amount, 2)
-  def euro(amount), do: "€ " <> decimal(abs(amount), 2)
+  @doc "Euros, by default with two decimals, e.g. `€ 1,23` or `−€ 0,40`."
+  def euro(amount, places \\ 2) do
+    rounded = Float.round(amount / 1, places)
+    if(rounded < 0, do: "−", else: "") <> "€ " <> decimal(abs(rounded), places)
+  end
 
   @doc "A number with a decimal comma and `places` decimals."
   def decimal(n, places) do
@@ -70,4 +72,25 @@ defmodule MijnverbruikWeb.Format do
 
   @doc "The first three letters of the month, e.g. `nov`."
   def short_month(%Date{} = date), do: date |> month() |> String.slice(0, 3)
+
+  @doc "A date as `9 nov 2026`."
+  def short_date(%Date{} = date), do: "#{date.day} #{short_month(date)} #{date.year}"
+
+  @doc "The weekday's first two letters and the day, e.g. `ma 9`."
+  def weekday_day(%Date{} = date), do: "#{date |> weekday() |> String.slice(0, 2)} #{date.day}"
+
+  @doc "A duration in seconds as Dutch words, e.g. `6 minuten`."
+  def ago(seconds) when seconds < 60, do: "#{max(seconds, 0)} seconden"
+  def ago(seconds) when seconds < 120, do: "1 minuut"
+  def ago(seconds) when seconds < 3600, do: "#{div(seconds, 60)} minuten"
+  def ago(seconds) when seconds < 7200, do: "1 uur"
+  def ago(seconds), do: "#{div(seconds, 3600)} uur"
+
+  @doc "The household's timezone."
+  def timezone, do: Application.fetch_env!(:mijnverbruik, :timezone)
+
+  @doc "Unix seconds as local time in `format`, e.g. `local_time(t, \"%H:%M\")`."
+  def local_time(unix, format) do
+    unix |> DateTime.from_unix!() |> DateTime.shift_zone!(timezone()) |> Calendar.strftime(format)
+  end
 end

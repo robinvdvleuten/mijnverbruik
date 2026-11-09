@@ -67,7 +67,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   defp assign_usage(socket) do
     tz = socket.assigns.tz
-    now = System.os_time(:second)
+    now = now()
     today = tz |> DateTime.now!() |> DateTime.to_date()
     tariff = Tariffs.valid_on(Tariffs.list_tariffs(), today)
     # The last 24 hours, ending with the current hour.
@@ -78,7 +78,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
     gas_hours =
       for hour <- first..(first + 23 * 3600)//3600 do
-        %{label: local_time(hour, tz, "%H:00"), up: get_in(by_hour, [hour, :gas_l]) || 0}
+        %{label: local_time(hour, "%H:00"), up: get_in(by_hour, [hour, :gas_l]) || 0}
       end
 
     # The running 5 minutes are left out: as an average power they would read
@@ -91,9 +91,8 @@ defmodule MijnverbruikWeb.DashboardLive do
     assign(socket,
       today: Readings.today(tz),
       gas_flow_l: Readings.gas_flow(),
-      electricity: quarters(first, by_minute, tz),
-      electricity_ticks:
-        for(k <- 0..5, do: local_time(first + k * 4 * 3600, tz, "%H:00")) ++ ["nu"],
+      electricity: quarters(first, by_minute),
+      electricity_ticks: for(k <- 0..5, do: local_time(first + k * 4 * 3600, "%H:00")) ++ ["nu"],
       gas_hours: gas_hours,
       gas_ticks: [hd(gas_hours).label, Enum.at(gas_hours, 12).label, "nu"],
       insights: Insights.summary(tz),
@@ -105,10 +104,10 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   # Average net power per quarter hour, from the 5-minute usage: Wh over
   # 5 minutes, times 12, is the average power in W.
-  defp quarters(first, by_minute, tz) do
+  defp quarters(first, by_minute) do
     for quarter <- first..(first + 24 * 3600 - 900)//900 do
       parts = for m <- [quarter, quarter + 300, quarter + 600], u = by_minute[m], do: u
-      label = local_time(quarter, tz, "%H:%M")
+      label = local_time(quarter, "%H:%M")
 
       if parts == [] do
         %{label: label, up: nil, down: 0}
@@ -134,7 +133,7 @@ defmodule MijnverbruikWeb.DashboardLive do
       hours =
         for hour <- start..(stop - 3600)//3600 do
           price = market[hour] && Tariffs.kwh_price(tariff, market[hour])
-          %{hour: hour, price: price, label: local_time(hour, tz, "%H:00")}
+          %{hour: hour, price: price, label: local_time(hour, "%H:00")}
         end
 
       cheapest =
@@ -181,11 +180,14 @@ defmodule MijnverbruikWeb.DashboardLive do
 
   @impl true
   def render(assigns) do
+    phases = if assigns.live, do: assigns.live.phases, else: []
+
     assigns =
       assign(assigns,
         mode: mode(assigns),
-        phases: if(assigns.live, do: assigns.live.phases, else: []),
-        standby: assigns.insights.standby_w
+        phases: phases,
+        standby: assigns.insights.standby_w,
+        third: third_card(phases, assigns.insights.standby_w)
       )
 
     ~H"""
@@ -201,7 +203,7 @@ defmodule MijnverbruikWeb.DashboardLive do
       }
     >
       <.banner :if={@banner?} id="offline-banner" title="Meter niet bereikbaar">
-        Laatste meting om {local_time(@live_at, @tz, "%H:%M")}, {ago(@now - @live_at)} geleden. Live waarden staan stil tot de meter weer data stuurt.
+        Laatste meting om {local_time(@live_at, "%H:%M")}, {ago(@now - @live_at)} geleden. Live waarden staan stil tot de meter weer data stuurt.
       </.banner>
 
       <.banner
@@ -224,8 +226,15 @@ defmodule MijnverbruikWeb.DashboardLive do
       />
 
       <div class="relative mx-auto -mt-1 w-full max-w-[340px] sm:max-w-[600px]">
-        <.flow layout={:narrow} class="sm:hidden" {flow_assigns(assigns)} />
-        <.flow layout={:wide} class="hidden sm:block" {flow_assigns(assigns)} />
+        <.flow
+          :for={{layout, class} <- [narrow: "sm:hidden", wide: "hidden sm:block"]}
+          layout={layout}
+          class={class}
+          mode={@mode}
+          stale={@state == :stale}
+          power_w={@live && @live.power_w}
+          gas_flow_l={@gas_flow_l}
+        />
       </div>
 
       <.banner
@@ -239,40 +248,34 @@ defmodule MijnverbruikWeb.DashboardLive do
       </.banner>
 
       <dl id="today" class="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <.tile
+        <.stat
           dot="bg-use"
           label="Afgenomen"
           id="today-electricity"
           value={kwh(@today.delivered_wh)}
           unit="kWh"
         />
-        <.tile
+        <.stat
           dot="bg-return"
           label="Teruggeleverd"
           id="today-returned"
           value={kwh(@today.returned_wh)}
           unit="kWh"
         />
-        <.tile dot="bg-gas" label="Gas" id="today-gas" value={m3(@today.gas_l)} unit="m³" />
-        <div class="min-w-0 rounded-3xl border border-tile-line bg-tile px-5 py-[18px] backdrop-blur-xl">
-          <dt class="flex items-center gap-[7px] text-[13px] text-muted">
-            <.dot class="bg-cost" />Kosten
-          </dt>
-          <dd id="today-cost" class="mt-1.5">
-            <%= if @today.cost do %>
-              <span class="text-2xl font-bold leading-none tracking-[-0.035em] md:text-[32px]">
-                {euro(@today.cost)}
-              </span>
-            <% else %>
-              <.link
-                navigate={~p"/settings"}
-                class="text-sm font-bold text-cost-ink underline-offset-4 hover:underline"
-              >
-                Tarieven instellen
-              </.link>
-            <% end %>
-          </dd>
-        </div>
+        <.stat dot="bg-gas" label="Gas" id="today-gas" value={m3(@today.gas_l)} unit="m³" />
+        <.stat
+          dot="bg-cost"
+          label="Kosten"
+          id="today-cost"
+          value={@today.cost && euro(@today.cost)}
+        >
+          <.link
+            navigate={~p"/settings"}
+            class="text-sm font-bold text-cost-ink underline-offset-4 hover:underline"
+          >
+            Tarieven instellen
+          </.link>
+        </.stat>
       </dl>
 
       <aside
@@ -306,7 +309,7 @@ defmodule MijnverbruikWeb.DashboardLive do
 
       <div class={[
         "grid gap-3 md:gap-4",
-        if(length(middle(@phases, @standby)) == 3, do: "md:grid-cols-3", else: "md:grid-cols-2")
+        if(@third, do: "md:grid-cols-3", else: "md:grid-cols-2")
       ]}>
         <.card id="gas-card" class="h-56 md:h-60">
           <:title>Gas</:title>
@@ -328,20 +331,20 @@ defmodule MijnverbruikWeb.DashboardLive do
 
         <.price_card prices={@prices} tariff={@tariff} gas_price={@gas_price} />
 
-        <%= if :phases in middle(@phases, @standby) do %>
-          <.phases_card phases={@phases} fuse_a={@fuse_a} stale={@state == :stale} />
-        <% end %>
-        <%= if :standby in middle(@phases, @standby) do %>
-          <.standby_card insights={@insights} tall />
-        <% end %>
+        <.phases_card
+          :if={@third == :phases}
+          phases={@phases}
+          fuse_a={@fuse_a}
+          stale={@state == :stale}
+        />
+        <.standby_card :if={@third == :standby} insights={@insights} tall />
       </div>
 
       <div class={[
         "grid gap-3 md:gap-4",
-        @standby && :phases in middle(@phases, @standby) &&
-          "md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]"
+        @standby && @third == :phases && "md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]"
       ]}>
-        <.standby_card :if={@standby && :phases in middle(@phases, @standby)} insights={@insights} />
+        <.standby_card :if={@standby && @third == :phases} insights={@insights} />
         <.card id="trend-card" class="h-[130px]">
           <:title>Laatste 5 min</:title>
           <:aside :if={@samples != []}>
@@ -373,15 +376,12 @@ defmodule MijnverbruikWeb.DashboardLive do
     """
   end
 
-  # The cards in the middle row next to gas and prices: phase load for homes
-  # with three phases, else standby power, which then leaves the bottom row.
-  defp middle(phases, standby) do
-    cond do
-      length(phases) > 1 -> [:gas, :price, :phases]
-      standby -> [:gas, :price, :standby]
-      true -> [:gas, :price]
-    end
-  end
+  # The third card in the middle row, next to gas and prices: phase load for
+  # homes with three phases, else standby power, which then leaves the bottom
+  # row.
+  defp third_card(phases, _standby) when length(phases) > 1, do: :phases
+  defp third_card(_phases, standby) when standby != nil, do: :standby
+  defp third_card(_phases, _standby), do: nil
 
   # What the hero shows: return to the grid, use from the grid while panels
   # produced today (so the grid is not all the home uses), or, without return,
@@ -425,7 +425,7 @@ defmodule MijnverbruikWeb.DashboardLive do
         role="status"
         class="mt-1.5 text-[15px] text-warn-ink"
       >
-        Laatste meting om {local_time(@live_at, @tz, "%H:%M")}
+        Laatste meting om {local_time(@live_at, "%H:%M")}
       </p>
       <p :if={@state != :stale} class="mt-1.5 max-w-[460px] text-[15px] text-muted text-pretty">
         {hero_note(@mode, @standby, @returned_wh)}
@@ -470,15 +470,6 @@ defmodule MijnverbruikWeb.DashboardLive do
       end
 
     "#{part} · #{day_month(DateTime.to_date(local))}"
-  end
-
-  defp flow_assigns(assigns) do
-    %{
-      mode: assigns.mode,
-      stale: assigns.state == :stale,
-      power_w: assigns.live && assigns.live.power_w,
-      gas_flow_l: assigns.gas_flow_l
-    }
   end
 
   attr :layout, :atom, values: [:wide, :narrow], required: true
@@ -679,28 +670,6 @@ defmodule MijnverbruikWeb.DashboardLive do
     """
   end
 
-  attr :id, :string, required: true
-  attr :dot, :string, required: true
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-  attr :unit, :string, required: true
-
-  defp tile(assigns) do
-    ~H"""
-    <div class="min-w-0 rounded-3xl border border-tile-line bg-tile px-5 py-[18px] backdrop-blur-xl">
-      <dt class="flex items-center gap-[7px] text-[13px] text-muted">
-        <.dot class={@dot} />{@label}
-      </dt>
-      <dd class="mt-1.5 flex items-baseline gap-1.5">
-        <span id={@id} class="text-2xl font-bold leading-none tracking-[-0.035em] md:text-[32px]">
-          {@value}
-        </span>
-        <span class="text-[11px] font-semibold text-muted md:text-xs">{@unit}</span>
-      </dd>
-    </div>
-    """
-  end
-
   attr :prices, :map, required: true
   attr :tariff, :any, required: true
   attr :gas_price, :any, required: true
@@ -810,12 +779,7 @@ defmodule MijnverbruikWeb.DashboardLive do
             <div
               class={[
                 "h-full rounded transition-[width,background-color] duration-500",
-                cond do
-                  @stale -> "bg-stale"
-                  load_level(phase.current_a, @fuse_a) == :critical -> "bg-danger"
-                  load_level(phase.current_a, @fuse_a) == :high -> "bg-warn"
-                  true -> "bg-use"
-                end
+                if(@stale, do: "bg-stale", else: load_class(load_level(phase.current_a, @fuse_a)))
               ]}
               style={"width: #{min(phase.current_a / @fuse_a * 100, 100)}%"}
             />
@@ -834,7 +798,7 @@ defmodule MijnverbruikWeb.DashboardLive do
     <section
       id="standby"
       class={[
-        "flex min-w-0 gap-3 rounded-3xl border border-tile-line bg-tile px-5 py-[18px] backdrop-blur-xl sm:px-[22px]",
+        "surface flex gap-3 px-5 py-[18px] sm:px-[22px]",
         if(@tall,
           do: "flex-col items-start justify-between md:h-60",
           else: "items-center justify-between md:h-[130px]"
@@ -872,17 +836,9 @@ defmodule MijnverbruikWeb.DashboardLive do
   defp load_level(current, fuse) when current >= fuse * @load_high, do: :high
   defp load_level(_current, _fuse), do: :normal
 
-  defp ago(seconds) when seconds < 60, do: "#{max(seconds, 0)} seconden"
-  defp ago(seconds) when seconds < 120, do: "1 minuut"
-  defp ago(seconds) when seconds < 3600, do: "#{div(seconds, 60)} minuten"
-  defp ago(seconds) when seconds < 7200, do: "1 uur"
-  defp ago(seconds), do: "#{div(seconds, 3600)} uur"
-
-  defp local_time(unix, tz, format) do
-    unix |> DateTime.from_unix!() |> DateTime.shift_zone!(tz) |> Calendar.strftime(format)
-  end
-
-  defp timezone, do: Application.fetch_env!(:mijnverbruik, :timezone)
+  defp load_class(:critical), do: "bg-danger"
+  defp load_class(:high), do: "bg-warn"
+  defp load_class(_level), do: "bg-use"
 
   defp now, do: System.os_time(:second)
 end
